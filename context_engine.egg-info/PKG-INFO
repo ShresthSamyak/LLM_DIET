@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: context-engine
+Version: 0.1.0
+Summary: Codebase ingestion and call-graph builder.
+Requires-Python: >=3.11
+Requires-Dist: typer>=0.12
