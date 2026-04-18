@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 
+from .apply import run_apply
 from .graph_builder import build_graph
 from .intent import format_intent_output
 from .parser import parse_file
@@ -132,6 +133,44 @@ def query(
         return
 
     typer.echo(format_intent_output(result, graph))
+
+
+@app.command()
+def apply(
+    query_str: str = typer.Argument(..., metavar="QUERY", help="What to add or fix, e.g. 'add login endpoint'."),
+    graph_path: Path = typer.Option(
+        Path(".cecl/graph.json"),
+        "--graph", "-g",
+        help="Path to graph.json produced by `index`.",
+    ),
+    root: Path = typer.Option(
+        Path("."),
+        "--root", "-r",
+        help="Project root directory.",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show diffs without writing files."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Query, plan, generate diffs, validate, and apply code changes."""
+    _configure_logging(verbose)
+
+    if not graph_path.exists():
+        typer.echo(f"Graph not found at {graph_path}. Run `context-engine index` first.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        typer.echo(f"Failed to parse {graph_path}: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    code = run_apply(query_str, graph, root, dry_run=dry_run, yes=yes)
+    raise typer.Exit(code=code)
 
 
 def main() -> None:

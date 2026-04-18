@@ -7,7 +7,7 @@ name = "context-engine"
 version = "0.1.0"
 description = "Codebase ingestion and call-graph builder."
 requires-python = ">=3.11"
-dependencies = ["typer>=0.12"]
+dependencies = ["typer>=0.12", "anthropic>=0.40"]
 
 [project.scripts]
 context-engine = "context_engine.cli:main"
