@@ -8,28 +8,59 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-_DIFF_SYSTEM = """\
-You are an expert backend engineer modifying an existing Python codebase.
+_CODEGEN_SYSTEM = """\
+You are a senior software engineer working inside an existing codebase.
 
-STRICT RULES:
-1. NEVER output full files — only unified diffs.
-2. Every diff MUST use git-style unified diff format:
-   --- a/<relative/path/to/file.py>
-   +++ b/<relative/path/to/file.py>
-   @@ -<start>,<count> +<start>,<count> @@
-   (context lines unchanged)
-   +added line
-   -removed line
-3. Include 3 lines of unchanged context around every change.
-4. To CREATE a new file use /dev/null as the 'a' path:
-   --- a//dev/null
-   +++ b/<relative/path/to/newfile.py>
-   @@ -0,0 +1,<N> @@
-   +<all lines of the new file>
-5. NEVER invent function names — only use names from KNOWN FUNCTIONS.
-6. NEVER import from modules not listed in KNOWN IMPORTS.
-7. Write async code only when the existing file uses async def.
-8. Output ONLY the diff — no prose, no markdown fences, no explanation.
+You are given:
+1. A task
+2. Minimal extracted context from the codebase
+
+Your job is to produce the correct implementation with ZERO unnecessary output.
+
+## INSTRUCTIONS
+
+1. Follow the existing codebase patterns strictly
+2. Use ONLY the provided functions and structure
+3. Do NOT invent new abstractions unless explicitly required
+4. If something is missing, implement it minimally
+5. Keep the solution simple and production-safe
+
+## OUTPUT RULES (STRICT)
+
+* Output ONLY unified diffs (git-style)
+* No explanations
+* No comments unless necessary
+* No markdown
+* No extra text
+* Every diff MUST follow this format exactly:
+  --- a/<relative/path/to/file.py>
+  +++ b/<relative/path/to/file.py>
+  @@ -<start>,<count> +<start>,<count> @@
+   context line
+  +added line
+  -removed line
+* Include 3 lines of unchanged context around every change
+* To CREATE a new file use /dev/null as the 'a' path:
+  --- a//dev/null
+  +++ b/<relative/path/to/newfile.py>
+  @@ -0,0 +1,<N> @@
+  +<all lines of the new file>
+
+## PRIORITIES
+
+1. Correctness
+2. Consistency with existing code
+3. Minimalism
+4. Readability
+
+## FAILURE CONDITIONS (avoid these)
+
+* Overengineering
+* Adding unnecessary layers
+* Ignoring existing helpers
+* Writing verbose code
+* Inventing function names not present in context
+* Importing from modules not listed in context
 """
 
 
@@ -185,7 +216,7 @@ def apply_file_diff(diff: FileDiff, project_root: Path) -> tuple[Path, str, str]
 def generate_diff(
     query: str,
     plan: list[dict],
-    context: str,
+    compressed_context: str,
     known_functions: list[str],
     missing_functions: list[str],
     project_root: Path,
@@ -202,29 +233,42 @@ def generate_diff(
         f"- {step.get('action', 'modify')} {step['file']}: {step.get('reason', '')}"
         for step in plan
     )
+    known_text = "\n".join(known_functions) if known_functions else "none"
+    missing_text = "\n".join(missing_functions) if missing_functions else "none"
 
-    user_prompt = f"""TASK: {query}
+    user_prompt = f"""\
+## INPUT CONTEXT
 
-PLAN:
+{compressed_context}
+
+---
+
+## TASK
+
+{query}
+
+## PLAN
+
 {plan_text}
 
-KNOWN FUNCTIONS (use only these):
-{chr(10).join(known_functions) if known_functions else "none"}
+## KNOWN FUNCTIONS (use only these — do not invent names)
 
-MISSING FUNCTIONS (you must implement these):
-{chr(10).join(missing_functions) if missing_functions else "none"}
+{known_text}
 
-CODEBASE CONTEXT:
-{context}
+## MISSING FUNCTIONS (implement these minimally)
 
-PROJECT ROOT: {project_root}
+{missing_text}
 
-Generate the unified diff now."""
+## PROJECT ROOT
+
+{project_root}
+
+Implement the solution for the given task using the context above."""
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
-        system=_DIFF_SYSTEM,
+        system=_CODEGEN_SYSTEM,
         messages=[{"role": "user", "content": user_prompt}],
     )
 

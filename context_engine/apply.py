@@ -2,28 +2,105 @@
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 from .patcher import _extract_create_content, apply_file_diff, backup_file, generate_diff, parse_diff
 from .planner import plan
+from .ranker import format_output, rank_nodes
 from .retrieval import run_query
 from .validator import validate_no_duplicates, validate_patch
 
+_COMPRESS_SYSTEM = """\
+You are a codebase context optimizer, not a code generator.
 
-def _build_context(result: dict) -> str:
-    """Format retrieval result as condensed context for LLM prompts."""
-    kept: list[dict] = result.get("nodes", [])
-    lines = []
-    for node in kept[:30]:  # cap to avoid huge prompts
-        name = node.get("name", "")
-        fpath = node.get("file", "")
-        code = node.get("code", "")
-        if code:
-            lines.append(f"# {fpath} - {name}\n{textwrap.shorten(code, width=500, placeholder='...')}")
-        else:
-            lines.append(f"# {fpath} - {name}")
-    return "\n\n".join(lines)
+Your job is to extract the MINIMUM necessary context from a codebase to solve the given task, while minimizing token usage.
+
+## INSTRUCTIONS
+
+1. Detect intent:
+   * DEBUG -> include function + callers + error paths
+   * GENERATE -> include helpers + dependencies + patterns
+   * EXPLAIN -> include high-level flow only
+
+2. Select context:
+   * Max 5-8 nodes total
+   * Prefer core functions over helpers
+   * Follow call graph (1 hop max)
+
+3. Compress aggressively:
+   * DO NOT include full code unless absolutely necessary
+   * Convert functions into: function_name(args) -> purpose
+   * Remove implementation details
+   * Keep only signatures + role
+
+4. Highlight:
+   * Core flow (how things connect)
+   * Missing pieces (important!)
+   * Likely issues (for debugging)
+
+5. Output format STRICTLY:
+
+=== TASK === <short rewritten task>
+
+=== CORE FLOW ===
+A -> B -> C
+
+=== KEY FUNCTIONS ===
+func1(args) -> purpose
+func2(args) -> purpose
+
+=== MISSING === <missing dependencies or functions>
+
+=== POSSIBLE ISSUES === <only if DEBUG>
+
+=== CONSTRAINTS ===
+<framework / async / auth etc>
+
+=== OUTPUT INSTRUCTION ===
+Return only code. No explanation.
+
+## RULES
+* Be concise. Every token matters.
+* No unnecessary text.
+* No explanations outside defined sections.
+* Do NOT generate final code solution.
+"""
+
+
+def _deterministic_context(query: str, result: dict) -> str:
+    """Rank and format nodes using the deterministic ranker (no LLM)."""
+    nodes: list[dict] = result.get("nodes", [])
+    if not nodes:
+        return ""
+    return format_output(query, nodes)
+
+
+def compress_context(query: str, result: dict) -> str:
+    """
+    Compress retrieval output into minimal LLM context.
+    Uses deterministic ranker first; optionally refines with Haiku.
+    Falls back gracefully if anthropic is unavailable.
+    """
+    deterministic = _deterministic_context(query, result)
+    if not deterministic.strip():
+        return ""
+
+    try:
+        import anthropic
+    except ImportError:
+        return deterministic
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        system=_COMPRESS_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"User query: {query}\n\nCode graph + functions:\n{deterministic}",
+        }],
+    )
+    return message.content[0].text.strip()
 
 
 def _extract_fn_lists(result: dict) -> tuple[list[str], list[str]]:
@@ -49,10 +126,10 @@ def run_apply(
 
     backup_dir = project_root / ".cecl" / "backups"
 
-    # Step 1: Context extraction
-    echo("Step 1/5  Extracting context...")
+    # Step 1: Context extraction + compression
+    echo("Step 1/5  Extracting and compressing context...")
     result = run_query(query, graph)
-    context = _build_context(result)
+    context = compress_context(query, result)
     known_fns, missing_fns = _extract_fn_lists(result)
 
     if not context.strip():
@@ -76,7 +153,7 @@ def run_apply(
         diff_text = generate_diff(
             query=query,
             plan=steps,
-            context=context,
+            compressed_context=context,
             known_functions=known_fns,
             missing_functions=missing_fns,
             project_root=project_root,
