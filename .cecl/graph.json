@@ -12,35 +12,35 @@
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_configure_logging",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 29,
+      "line": 30,
       "code": "def _configure_logging(verbose: bool) -> None:\n    level = logging.DEBUG if verbose else logging.INFO\n    logging.basicConfig(\n        format=\"%(levelname)s  %(message)s\",\n        level=level,\n        stream=sys.stderr,\n    )"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_collect_py_files",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 38,
+      "line": 39,
       "code": "def _collect_py_files(root: Path) -> list[Path]:\n    \"\"\"Walk root recursively, skipping ignored directories.\"\"\"\n    files: list[Path] = []\n    for path in root.rglob(\"*.py\"):\n        if any(part in IGNORE_DIRS for part in path.parts):\n            continue\n        files.append(path)\n    return sorted(files)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:index",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 49,
-      "code": "def index(\n    directory: Path = typer.Argument(\n        default=Path(\".\"),\n        help=\"Root directory to scan (default: current directory).\",\n        exists=True,\n        file_okay=False,\n        dir_okay=True,\n        resolve_path=True,\n    ),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Scan Python files and build a call graph saved to .cecl/graph.json.\"\"\"\n    _configure_logging(verbose)\n    logger = logging.getLogger(__name__)\n\n    logger.info(\"Scanning %s for Python files\u2026\", directory)\n    py_files = _collect_py_files(directory)\n    if not py_files:\n        typer.echo(\"No Python files found.\", err=True)\n        raise typer.Exit(code=1)\n\n    logger.info(\"Found %d files \u2014 parsing\u2026\", len(py_files))\n\n    results = []\n    errors = 0\n    for path in py_files:\n        result = parse_file(path)\n        if result is None:\n            errors += 1\n        else:\n            results.append(result)\n\n    logger.info(\"Parsed %d files (%d skipped due to errors).\", len(results), errors)\n\n    graph = build_graph(results)\n\n    out_dir = directory / OUTPUT_DIR\n    out_dir.mkdir(parents=True, exist_ok=True)\n    out_path = out_dir / OUTPUT_FILE\n    out_path.write_text(json.dumps(graph, indent=2), encoding=\"utf-8\")\n\n    node_counts = Counter(n[\"type\"] for n in graph[\"nodes\"])\n    edge_counts = Counter(e[\"type\"] for e in graph[\"edges\"])\n    typer.echo(f\"Graph saved \u2192 {out_path}\")\n    typer.echo(\n        f\"  nodes : {len(graph['nodes'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(node_counts.items()))\n    )\n    typer.echo(\n        f\"  edges : {len(graph['edges'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(edge_counts.items()))\n    )"
+      "line": 50,
+      "code": "def index(\n    directory: Path = typer.Argument(\n        default=Path(\".\"),\n        help=\"Root directory to scan (default: current directory).\",\n        exists=True,\n        file_okay=False,\n        dir_okay=True,\n        resolve_path=True,\n    ),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Scan Python files and build a call graph saved to .cecl/graph.json.\"\"\"\n    _configure_logging(verbose)\n    logger = logging.getLogger(__name__)\n\n    logger.info(\"Scanning %s for Python files\u2026\", directory)\n    py_files = _collect_py_files(directory)\n    if not py_files:\n        typer.echo(\"No Python files found.\", err=True)\n        raise typer.Exit(code=1)\n\n    logger.info(\"Found %d files \u2014 parsing\u2026\", len(py_files))\n\n    results = []\n    errors = 0\n    for path in py_files:\n        result = parse_file(path)\n        if result is None:\n            errors += 1\n        else:\n            results.append(result)\n\n    logger.info(\"Parsed %d files (%d skipped due to errors).\", len(results), errors)\n\n    graph = build_graph(results)\n\n    out_dir = directory / OUTPUT_DIR\n    out_dir.mkdir(parents=True, exist_ok=True)\n    out_path = out_dir / OUTPUT_FILE\n    out_path.write_text(json.dumps(graph, indent=2), encoding=\"utf-8\")\n\n    node_counts = Counter(n[\"type\"] for n in graph[\"nodes\"])\n    edge_counts = Counter(e[\"type\"] for e in graph[\"edges\"])\n    typer.echo(f\"Graph saved -> {out_path}\")\n    typer.echo(\n        f\"  nodes : {len(graph['nodes'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(node_counts.items()))\n    )\n    typer.echo(\n        f\"  edges : {len(graph['edges'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(edge_counts.items()))\n    )"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:query",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 104,
-      "code": "def query(\n    query_str: str = typer.Argument(..., metavar=\"QUERY\", help=\"Natural-language query, e.g. 'fix login bug'.\"),\n    graph_path: Path = typer.Option(\n        Path(\".cecl/graph.json\"),\n        \"--graph\", \"-g\",\n        help=\"Path to graph.json produced by `index`.\",\n    ),\n    raw: bool = typer.Option(False, \"--raw\", help=\"Print full JSON result instead of formatted output.\"),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Query the code graph and return minimal relevant context.\"\"\"\n    _configure_logging(verbose)\n\n    if not graph_path.exists():\n        typer.echo(f\"Graph not found at {graph_path}. Run `context-engine index` first.\", err=True)\n        raise typer.Exit(code=1)\n\n    try:\n        graph = json.loads(graph_path.read_text(encoding=\"utf-8\"))\n    except json.JSONDecodeError as exc:\n        typer.echo(f\"Failed to parse {graph_path}: {exc}\", err=True)\n        raise typer.Exit(code=1)\n\n    result = run_query(query_str, graph)\n\n    if raw:\n        typer.echo(json.dumps(result, indent=2))\n        return\n\n    # Human-readable output.\n    typer.echo(f\"intent        : {result['intent']}\")\n    typer.echo(f\"keywords      : {', '.join(result['keywords'])}\")\n    typer.echo(f\"entry points  : {len(result['entry_points'])}\")\n    for ep in result[\"entry_points\"]:\n        typer.echo(f\"  \u2022 {ep}\")\n    cats = result[\"categories\"]\n    from collections import Counter as _C\n    cat_counts = _C(cats.values())\n    typer.echo(\n        f\"nodes kept    : {len(result['nodes_selected'])}  \"\n        + \"  \".join(f\"{k}={v}\" for k, v in sorted(cat_counts.items()))\n    )\n    inline_count = sum(len(v) for v in result[\"inline_hints\"].values())\n    if inline_count:\n        typer.echo(f\"inline hints  : {inline_count}\")\n\n    raw_tokens = result[\"token_estimate_raw\"]\n    compressed_tokens = result[\"token_estimate\"]\n    if raw_tokens > 0:\n        saved_pct = 100 * (raw_tokens - compressed_tokens) // raw_tokens\n    else:\n        saved_pct = 0\n    typer.echo(\n        f\"tokens        : ~{compressed_tokens} (raw ~{raw_tokens}, \u2212{saved_pct}%)\"\n    )\n    typer.echo(\"\")\n    typer.echo(\"\u2500\" * 72)\n    typer.echo(result[\"context\"])\n    typer.echo(\"\u2500\" * 72)"
+      "line": 105,
+      "code": "def query(\n    query_str: str = typer.Argument(..., metavar=\"QUERY\", help=\"Natural-language query, e.g. 'fix login bug'.\"),\n    graph_path: Path = typer.Option(\n        Path(\".cecl/graph.json\"),\n        \"--graph\", \"-g\",\n        help=\"Path to graph.json produced by `index`.\",\n    ),\n    raw: bool = typer.Option(False, \"--raw\", help=\"Print full JSON result instead of formatted output.\"),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Query the code graph and return minimal relevant context.\"\"\"\n    _configure_logging(verbose)\n\n    if not graph_path.exists():\n        typer.echo(f\"Graph not found at {graph_path}. Run `context-engine index` first.\", err=True)\n        raise typer.Exit(code=1)\n\n    try:\n        graph = json.loads(graph_path.read_text(encoding=\"utf-8\"))\n    except json.JSONDecodeError as exc:\n        typer.echo(f\"Failed to parse {graph_path}: {exc}\", err=True)\n        raise typer.Exit(code=1)\n\n    result = run_query(query_str, graph)\n\n    if raw:\n        typer.echo(json.dumps(result, indent=2))\n        return\n\n    typer.echo(format_intent_output(result, graph))"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:main",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 165,
+      "line": 137,
       "code": "def main() -> None:\n    app()"
     },
     {
@@ -155,6 +155,94 @@
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/graph_builder.py",
       "line": 223,
       "code": "def _name_to_ids_local(file_id: str, name: str, name_to_ids: dict[str, list[str]]) -> list[str]:\n    return [nid for nid in name_to_ids.get(name, []) if nid.startswith(file_id + \":\")]"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "type": "file"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:detect_intent",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 66,
+      "code": "def detect_intent(query: str) -> str:\n    \"\"\"Return one of: ``debug`` | ``explain`` | ``generate`` | ``lookup``.\n\n    Detection order: phrase patterns \u2192 single-word triggers \u2192 fallback (lookup).\n    Priority across intents: debug > explain > generate > lookup.\n    \"\"\"\n    q = query.lower()\n    tokens = set(q.split())\n\n    for intent in (\"debug\", \"explain\", \"generate\"):\n        for phrase in _INTENT_PHRASES.get(intent, ()):\n            if phrase in q:\n                return intent\n\n    for intent in (\"debug\", \"explain\", \"generate\"):\n        if tokens & _INTENT_WORDS[intent]:\n            return intent\n\n    return \"lookup\""
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:build_flow",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 91,
+      "code": "def build_flow(\n    nodes: list[Node],\n    edges: list[Edge],\n    entry_ids: list[str],\n) -> list[str]:\n    \"\"\"Return bare function/method names in topological call order.\n\n    Restricted to the kept function/method nodes and ``calls`` edges between\n    them.  Entry points seed the queue first.  Cycles are appended at the end.\n    \"\"\"\n    kept: dict[str, Node] = {\n        n[\"id\"]: n\n        for n in nodes\n        if n.get(\"type\") in (\"function\", \"method\")\n    }\n    if not kept:\n        return []\n\n    succ: dict[str, list[str]] = {nid: [] for nid in kept}\n    in_deg: dict[str, int] = {nid: 0 for nid in kept}\n    for edge in edges:\n        src, dst, etype = edge[\"from\"], edge[\"to\"], edge.get(\"type\", \"\")\n        if etype == \"calls\" and src in kept and dst in kept:\n            succ[src].append(dst)\n            in_deg[dst] += 1\n\n    # Seed queue: entry points with no internal callers first.\n    queue: deque[str] = deque()\n    queued: set[str] = set()\n    for eid in entry_ids:\n        if eid in kept and in_deg[eid] == 0:\n            queue.append(eid)\n            queued.add(eid)\n    for nid in kept:\n        if nid not in queued and in_deg[nid] == 0:\n            queue.append(nid)\n            queued.add(nid)\n\n    ordered: list[str] = []\n    visited: set[str] = set()\n    while queue:\n        nid = queue.popleft()\n        if nid in visited:\n            continue\n        visited.add(nid)\n        _, _, name = nid.rpartition(\":\")\n        ordered.append(name)\n        for callee in succ[nid]:\n            in_deg[callee] -= 1\n            if in_deg[callee] == 0 and callee not in visited:\n                queue.append(callee)\n\n    # Append cycle members last.\n    for nid in kept:\n        if nid not in visited:\n            _, _, name = nid.rpartition(\":\")\n            ordered.append(name)\n\n    return ordered"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:extract_failures",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 156,
+      "code": "def extract_failures(nodes: list[Node]) -> list[dict[str, str]]:\n    \"\"\"Scan code snippets for AST-level failure patterns.\n\n    Detected patterns\n    -----------------\n    * ``raise <Exc>``     \u2014 explicit exception raises.\n    * ``except <Exc>``    \u2014 exception handlers (potential silent swallowers).\n    * ``if <guard>: raise / return False/None``  \u2014 validation checks.\n\n    Returns a deduplicated list of ``{\"node\", \"kind\", \"detail\"}`` dicts.\n    \"\"\"\n    results: list[dict[str, str]] = []\n    seen: set[tuple[str, str, str]] = set()\n\n    def _add(node_name: str, kind: str, detail: str) -> None:\n        key = (node_name, kind, detail)\n        if key not in seen:\n            seen.add(key)\n            results.append({\"node\": node_name, \"kind\": kind, \"detail\": detail})\n\n    for node in nodes:\n        code = node.get(\"code\", \"\")\n        if not code:\n            continue\n        _, _, name = node[\"id\"].rpartition(\":\")\n\n        try:\n            tree = ast.parse(textwrap.dedent(code).strip())\n        except SyntaxError:\n            continue\n\n        for child in ast.walk(tree):\n            if isinstance(child, ast.Raise) and child.exc is not None:\n                try:\n                    exc_text = ast.unparse(child.exc)\n                except Exception:\n                    exc_text = \"...\"\n                _add(name, \"raises\", exc_text)\n\n            elif isinstance(child, ast.ExceptHandler) and child.type is not None:\n                try:\n                    exc_type = ast.unparse(child.type)\n                except Exception:\n                    exc_type = \"Exception\"\n                _add(name, \"catches\", exc_type)\n\n            elif isinstance(child, ast.If):\n                body_is_guard = any(\n                    isinstance(s, ast.Raise)\n                    or (\n                        isinstance(s, ast.Return)\n                        and (\n                            s.value is None\n                            or (isinstance(s.value, ast.Constant)\n                                and s.value.value in (False, None))\n                        )\n                    )\n                    for s in child.body\n                )\n                if body_is_guard:\n                    try:\n                        cond = ast.unparse(child.test)\n                    except Exception:\n                        cond = \"...\"\n                    _add(name, \"check\", cond)\n\n    return results"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:debug_hints",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 249,
+      "code": "def debug_hints(\n    failures: list[dict[str, str]],\n    keywords: list[str],\n) -> list[str]:\n    \"\"\"Return up to 6 actionable debug hints based on failures and keywords.\"\"\"\n    signal: set[str] = set(keywords)\n    for f in failures:\n        signal.update(f[\"detail\"].lower().split())\n\n    hints: list[str] = []\n    for trigger_set, hint in _HINT_RULES:\n        if trigger_set & signal:\n            hints.append(hint)\n\n    for f in failures:\n        if len(hints) >= 6:\n            break\n        if f[\"kind\"] == \"raises\":\n            hints.append(\n                f\"{f['node']} raises {f['detail']} \u2014 trace the call site\"\n            )\n        elif f[\"kind\"] == \"catches\":\n            hints.append(\n                f\"{f['node']} silently catches {f['detail']} \u2014 inspect handler\"\n            )\n\n    return hints[:6]"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:suggest_implementation",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 316,
+      "code": "def suggest_implementation(keywords: list[str]) -> list[str]:\n    \"\"\"Return ordered implementation steps for a generate-mode query.\"\"\"\n    kw = set(keywords)\n    if kw & {\"login\", \"auth\", \"authenticate\", \"signin\", \"jwt\", \"token\", \"password\"}:\n        return _GENERATE_TEMPLATES[\"auth\"]\n    if kw & {\"user\", \"account\", \"profile\", \"register\", \"signup\"}:\n        return _GENERATE_TEMPLATES[\"user\"]\n    if kw & {\"db\", \"database\", \"sql\", \"model\", \"schema\", \"migration\"}:\n        return _GENERATE_TEMPLATES[\"db\"]\n    return _GENERATE_TEMPLATES[\"default\"]"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_bare",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 335,
+      "code": "def _bare(node_id: str) -> str:\n    _, _, name = node_id.rpartition(\":\")\n    return name or node_id"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_token_line",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 340,
+      "code": "def _token_line(result: Mapping[str, Any]) -> str:\n    rt = result.get(\"token_estimate_raw\", 0)\n    ct = result.get(\"token_estimate\", 0)\n    saved = 100 * (rt - ct) // rt if rt > 0 else 0\n    return f\"tokens        : ~{ct} (raw ~{rt}, -{saved}%)\""
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 347,
+      "code": "def _format_debug(\n    result: Mapping[str, Any],\n    flow: list[str],\n    failures: list[dict[str, str]],\n) -> str:\n    lines: list[str] = [\n        \"intent        : DEBUG\",\n        f\"keywords      : {', '.join(result.get('keywords', []))}\",\n        \"\",\n    ]\n\n    if result.get(\"entry_points\"):\n        lines.append(\"ENTRY POINTS:\")\n        for ep in result[\"entry_points\"]:\n            lines.append(f\"  {_bare(ep)}\")\n        lines.append(\"\")\n\n    if flow:\n        lines += [\"CALL FLOW:\", \"  \" + \" -> \".join(flow), \"\"]\n\n    if failures:\n        lines.append(\"POTENTIAL FAILURES:\")\n        for f in failures:\n            if f[\"kind\"] == \"raises\":\n                lines.append(f\"  - {f['node']} raises {f['detail']}\")\n            elif f[\"kind\"] == \"catches\":\n                lines.append(f\"  - {f['node']} catches {f['detail']}\")\n            elif f[\"kind\"] == \"check\":\n                lines.append(f\"  - {f['node']}: guard on `{f['detail']}`\")\n        lines.append(\"\")\n\n    hints = debug_hints(failures, result.get(\"keywords\", []))\n    if hints:\n        lines.append(\"DEBUG HINTS:\")\n        for h in hints:\n            lines.append(f\"  - {h}\")\n        lines.append(\"\")\n\n    nodes_sel = result.get(\"nodes_selected\", [])\n    lines += [\n        f\"nodes         : {len(nodes_sel)}\",\n        _token_line(result),\n        \"\",\n    ]\n\n    if result.get(\"context\"):\n        lines += [_DIVIDER, result[\"context\"], _DIVIDER]\n\n    return \"\\n\".join(lines)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_explain",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 398,
+      "code": "def _format_explain(\n    result: Mapping[str, Any],\n    flow: list[str],\n) -> str:\n    kws = result.get(\"keywords\", [])\n    domain = kws[0].upper() if kws else \"CODE\"\n\n    lines: list[str] = [\n        \"intent        : EXPLAIN\",\n        f\"keywords      : {', '.join(kws)}\",\n        \"\",\n        f\"{domain} FLOW:\",\n    ]\n\n    if flow:\n        for i, step in enumerate(flow, 1):\n            lines.append(f\"  {i}. {step}\")\n    else:\n        lines.append(\"  (no flow data \u2014 run `context-engine index` first)\")\n\n    lines += [\n        \"\",\n        f\"nodes         : {len(result.get('nodes_selected', []))}\",\n        _token_line(result),\n        \"\",\n    ]\n\n    if result.get(\"context\"):\n        lines += [_DIVIDER, result[\"context\"], _DIVIDER]\n\n    return \"\\n\".join(lines)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_generate",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 431,
+      "code": "def _format_generate(\n    result: Mapping[str, Any],\n    existing: list[str],\n) -> str:\n    kws = result.get(\"keywords\", [])\n\n    lines: list[str] = [\n        \"intent        : GENERATE\",\n        f\"keywords      : {', '.join(kws)}\",\n        \"\",\n    ]\n\n    if existing:\n        lines.append(\"EXISTING COMPONENTS:\")\n        for comp in existing:\n            lines.append(f\"  - {comp}\")\n        lines.append(\"\")\n\n    steps = suggest_implementation(kws)\n    lines.append(\"SUGGESTED IMPLEMENTATION:\")\n    for i, step in enumerate(steps, 1):\n        lines.append(f\"  {i}. {step}\")\n    lines.append(\"\")\n\n    if result.get(\"context\"):\n        lines += [\"EXISTING CODE:\", _DIVIDER, result[\"context\"], _DIVIDER]\n\n    return \"\\n\".join(lines)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_lookup",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 461,
+      "code": "def _format_lookup(result: Mapping[str, Any]) -> str:\n    lines: list[str] = [\n        \"intent        : LOOKUP\",\n        f\"keywords      : {', '.join(result.get('keywords', []))}\",\n        \"\",\n    ]\n\n    eps = result.get(\"entry_points\", [])\n    if eps:\n        lines.append(f\"entry points  : {len(eps)}\")\n        for ep in eps:\n            lines.append(f\"  * {_bare(ep)}\")\n        lines.append(\"\")\n\n    cat_counts = Counter(result.get(\"categories\", {}).values())\n    lines.append(\n        f\"nodes         : {len(result.get('nodes_selected', []))}  \"\n        + \"  \".join(f\"{k}={v}\" for k, v in sorted(cat_counts.items()))\n    )\n\n    inline_count = sum(len(v) for v in result.get(\"inline_hints\", {}).values())\n    if inline_count:\n        lines.append(f\"inline hints  : {inline_count}\")\n\n    lines += [\"\", _token_line(result), \"\"]\n\n    if result.get(\"context\"):\n        lines += [_DIVIDER, result[\"context\"], _DIVIDER]\n\n    return \"\\n\".join(lines)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "line": 497,
+      "code": "def format_intent_output(\n    result: Mapping[str, Any],\n    graph: Mapping[str, Any],\n) -> str:\n    \"\"\"Produce intent-aware CLI output for a query result.\n\n    Dispatches to one of four formatters:\n\n    * ``debug``    \u2192 CALL FLOW + POTENTIAL FAILURES + DEBUG HINTS + code\n    * ``explain``  \u2192 numbered FLOW + code\n    * ``generate`` \u2192 EXISTING COMPONENTS + SUGGESTED IMPLEMENTATION + code\n    * ``lookup``   \u2192 entry points + stats + code  (current behaviour)\n    \"\"\"\n    intent = result.get(\"intent\", \"lookup\")\n    all_nodes: dict[str, Any] = {n[\"id\"]: n for n in graph.get(\"nodes\", [])}\n    kept: list[Node] = [\n        all_nodes[nid]\n        for nid in result.get(\"nodes_selected\", [])\n        if nid in all_nodes\n    ]\n    edges: list[Edge] = graph.get(\"edges\", [])\n    entry_ids: list[str] = result.get(\"entry_points\", [])\n\n    flow = build_flow(kept, edges, entry_ids)\n    failures = extract_failures(kept)\n    existing = [_bare(nid) for nid in result.get(\"nodes_selected\", [])]\n\n    if intent == \"debug\":\n        return _format_debug(result, flow, failures)\n    if intent == \"explain\":\n        return _format_explain(result, flow)\n    if intent == \"generate\":\n        return _format_generate(result, existing)\n    return _format_lookup(result)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/parser.py",
@@ -347,69 +435,160 @@
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:parse_query",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 56,
-      "code": "def parse_query(query: str) -> dict[str, Any]:\n    \"\"\"Return intent + keywords extracted from a raw query string.\n\n    Intent is ``\"debug\"`` when the query contains a debugging trigger word,\n    otherwise ``\"lookup\"``.  Keywords are lower-cased non-stop words that are\n    likely symbol names (letters/digits/underscores only).\n    \"\"\"\n    tokens = re.findall(r\"[a-zA-Z_][a-zA-Z0-9_]*\", query.lower())\n    intent = \"debug\" if _DEBUG_TRIGGERS & set(tokens) else \"lookup\"\n    keywords = [t for t in tokens if t not in _STOP_WORDS and t not in _DEBUG_TRIGGERS]\n    # Deduplicate preserving order.\n    seen: set[str] = set()\n    unique_kw: list[str] = []\n    for kw in keywords:\n        if kw not in seen:\n            seen.add(kw)\n            unique_kw.append(kw)\n    return {\"intent\": intent, \"keywords\": unique_kw}"
+      "line": 69,
+      "code": "def parse_query(query: str) -> dict[str, Any]:\n    \"\"\"Return intent + keywords extracted from a raw query string.\n\n    Intent is one of ``debug | explain | generate | lookup`` \u2014 detected by\n    :func:`intent.detect_intent` using phrase patterns then single-word\n    triggers in priority order.\n\n    Keywords are lower-cased tokens stripped of stop words and intent trigger\n    words so that the code-search stage only sees meaningful symbol names.\n    \"\"\"\n    intent = detect_intent(query)\n    tokens = re.findall(r\"[a-zA-Z_][a-zA-Z0-9_]*\", query.lower())\n    _filter = _STOP_WORDS | INTENT_FILTER_WORDS\n    keywords = [t for t in tokens if t not in _filter]\n    seen: set[str] = set()\n    unique_kw: list[str] = []\n    for kw in keywords:\n        if kw not in seen:\n            seen.add(kw)\n            unique_kw.append(kw)\n    return {\"intent\": intent, \"keywords\": unique_kw}"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 230,
+      "code": "def _tokenize(identifier: str) -> list[str]:\n    \"\"\"Split snake_case / camelCase / dotted / path-like strings into lower tokens.\"\"\"\n    identifier = _EXT_STRIP.sub(\"\", identifier)\n    tokens: list[str] = []\n    for word in re.split(r\"[^a-zA-Z0-9]+\", identifier):\n        if not word:\n            continue\n        parts = _CAMEL_SPLIT.findall(word) or [word]\n        tokens.extend(p.lower() for p in parts)\n    return tokens"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_expand_keywords",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 242,
+      "code": "def _expand_keywords(\n    keywords: list[str],\n) -> tuple[set[str], set[str], set[str]]:\n    \"\"\"Return ``(primary, synonyms, secondary)`` token sets.\n\n    Three tiers of signal strength\n    --------------------------------\n    * **primary** \u2014 the user's own keywords, tokenised.  These must appear in\n      a node's name or file path for the entry-point hard gate to pass.\n    * **synonyms** \u2014 first-level expansions from ``_SYNONYMS``.  They add\n      score bonuses but cannot pass the hard gate alone.\n    * **secondary** \u2014 second-level expansions (synonyms of synonyms).  They\n      provide a weak additional signal (+1) for code that uses indirect\n      terminology (e.g. ``jwt`` or ``session`` when the user queried\n      ``login``).  They cannot affect the hard gate at all.\n\n    Example (query = \"login\")\n    -------------------------\n    primary   = {\"login\"}\n    synonyms  = {\"auth\", \"authenticate\", \"signin\", \"token\", \"session\", \"jwt\"}\n    secondary = {\"bearer\", \"claim\", \"cookie\", \"credential\", \"security\", \u2026}\n    \"\"\"\n    primary: set[str] = set()\n    for kw in keywords:\n        primary.update(_tokenize(kw))\n\n    # Level-1 expansion.\n    synonyms: set[str] = set()\n    for kw in primary:\n        for syn in _SYNONYMS.get(kw, ()):\n            if syn not in primary:\n                synonyms.add(syn)\n\n    # Level-2 expansion: fan out from synonyms, excluding already-known tokens.\n    secondary: set[str] = set()\n    for syn in synonyms:\n        for syn2 in _SYNONYMS.get(syn, ()):\n            if syn2 not in primary and syn2 not in synonyms:\n                secondary.add(syn2)\n\n    return primary, synonyms, secondary"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 293,
+      "code": "def _weighted_keywords(raw_keywords: list[str]) -> dict[str, int]:\n    \"\"\"Return a mapping of ``token -> weight`` for the full expanded keyword set.\n\n    Weight tiers\n    ------------\n    * ``3`` \u2014 user's exact words (highest confidence).\n    * ``2`` \u2014 strong first-level synonyms (close semantic match).\n    * ``1`` \u2014 second-level / related concepts (weak signal).\n    * ``0`` \u2014 generic terms (filtered out; not included in result).\n\n    Example (query = \"login\")\n    -------------------------\n    ``{\"login\": 3, \"auth\": 2, \"jwt\": 2, \"token\": 2, \"session\": 2,\n       \"authenticate\": 2, \"signin\": 2, \"bearer\": 1, \"cookie\": 1, ...}``\n    \"\"\"\n    weights: dict[str, int] = {}\n\n    # Exact user tokens \u2014 weight 3.\n    primary: set[str] = set()\n    for kw in raw_keywords:\n        for tok in _tokenize(kw):\n            primary.add(tok)\n            weights[tok] = 3\n\n    # First-level synonyms \u2014 weight 2 (skip generic terms).\n    synonyms: set[str] = set()\n    for kw in primary:\n        for syn in _SYNONYMS.get(kw, ()):\n            if syn not in primary and syn not in _GENERIC_TERMS:\n                synonyms.add(syn)\n                if weights.get(syn, 0) < 2:\n                    weights[syn] = 2\n\n    # Second-level synonyms \u2014 weight 1 (skip generic terms).\n    for syn in synonyms:\n        for syn2 in _SYNONYMS.get(syn, ()):\n            if syn2 not in primary and syn2 not in synonyms and syn2 not in _GENERIC_TERMS:\n                if syn2 not in weights:   # don't downgrade a higher-tier token\n                    weights[syn2] = 1\n\n    return weights"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_compute_fan_in",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 336,
+      "code": "def _compute_fan_in(edges: list[Edge]) -> dict[str, int]:\n    \"\"\"Count incoming ``calls`` edges per node \u2014 proxy for importance.\"\"\"\n    fan_in: dict[str, int] = {}\n    for edge in edges:\n        if edge.get(\"type\") == \"calls\":\n            fan_in[edge[\"to\"]] = fan_in.get(edge[\"to\"], 0) + 1\n    return fan_in"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_test_path",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 345,
+      "code": "def _is_test_path(file_part: str) -> bool:\n    \"\"\"Return True when the file path contains a test/mock/fixture segment.\"\"\"\n    path_tokens = set(_tokenize(file_part))\n    return bool(path_tokens & _TEST_PATH_TOKENS)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_important_dir",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 351,
+      "code": "def _is_important_dir(file_part: str) -> bool:\n    \"\"\"Return True when the file path contains a high-signal directory name.\"\"\"\n    segments = {seg.lower() for seg in re.split(r\"[/\\\\]\", file_part) if seg}\n    return bool(segments & _IMPORTANT_DIRS)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_relevant_module",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 357,
+      "code": "def _is_relevant_module(file_part: str, kw_weights: dict[str, int]) -> bool:\n    \"\"\"Hard module gate: True only if the file path contains a domain-specific\n    strong keyword.\n\n    Two conditions must BOTH hold for a file to qualify:\n\n    1. The path token is **strong** (weight >= 2 in kw_weights) \u2014 excludes\n       weak second-level expansions.\n    2. The path token is in ``_ENTRY_MODULE_KEYWORDS`` \u2014 excludes terms that\n       are weight-2 synonyms but carry a different meaning in a path context.\n\n    Example that this fixes\n    -----------------------\n    Query = \"login\"  \u2192  \"session\" gets weight 2 (synonym).\n    ``app/db/session.py`` path tokens = {\"app\", \"db\", \"session\"}.\n    ``session`` IS weight-2 but IS NOT in ``_ENTRY_MODULE_KEYWORDS``  \u2192  DROPPED.\n    ``core/security.py`` path tokens include ``security`` which IS in the\n    allowlist  \u2192  PASSES.\n    \"\"\"\n    file_tokens = set(_tokenize(file_part))\n    # Intersection of weight-2+ keywords AND the strict domain allowlist.\n    qualifying_kws = {\n        k for k, w in kw_weights.items()\n        if w >= 2 and k in _ENTRY_MODULE_KEYWORDS\n    }\n    return bool(file_tokens & qualifying_kws)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 385,
+      "code": "def _score_node(\n    node: Node,\n    kw_weights: dict[str, int],\n    fan_in: dict[str, int],\n) -> int:\n    \"\"\"Score a node's suitability as an entry point using weighted keywords.\n\n    Hard gate\n    ---------\n    A node must have at least one token match with weight >= 2 (i.e. an exact\n    user keyword or a strong synonym) in its symbol name OR file path.\n    Weight-1 (related concept) or weight-0 (generic) matches alone cannot\n    pass the gate, preventing distant noise from becoming an entry point.\n\n    Scoring rubric\n    --------------\n    Name/path match scores = ``weight * position_multiplier``:\n    * Symbol name hit:  ``weight * 1.5`` (rounded down)  \u2014 name is strongest signal.\n    * File path hit:    ``weight * 1``                   \u2014 useful but weaker.\n    Path-level boosts applied on top:\n    * ``+3`` file stem in _ENTRY_BOOST_FILES (auth.py, security.py, routes\u2026).\n    * ``+2`` file lives in important directory (auth/service/core/api).\n    * ``+1`` file name resembles a generic entry-point module.\n    * ``+2`` high incoming-call count (fan-in >= 3).\n    * ``-3`` inside a test/mock/fixture path.\n\n    Returns ``0`` when the hard gate is not satisfied.\n    \"\"\"\n    if node[\"type\"] not in (\"function\", \"method\", \"class\", \"file\"):\n        return 0\n\n    nid: str = node[\"id\"]\n    file_part, _, sym_part = nid.rpartition(\":\")\n    if not file_part:\n        file_part = nid\n        sym_part = \"\"\n\n    name_tokens = set(_tokenize(sym_part))\n    file_tokens = set(_tokenize(file_part))\n\n    # Compute the best weight matched in name and file separately.\n    name_matches = {t: kw_weights[t] for t in name_tokens if t in kw_weights}\n    file_matches = {t: kw_weights[t] for t in file_tokens if t in kw_weights}\n\n    best_name_w = max(name_matches.values(), default=0)\n    best_file_w = max(file_matches.values(), default=0)\n\n    # \u2500\u2500 Hard gate \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    # Require weight >= 2 (exact user word or strong synonym) somewhere.\n    if best_name_w < 2 and best_file_w < 2:\n        return 0\n    # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n    # Sum weighted scores: name hits count 1.5\u00d7, file hits count 1\u00d7.\n    name_score = sum(int(w * 1.5) for w in name_matches.values())\n    file_score = sum(w for w in file_matches.values())\n    score = name_score + file_score\n\n    # Path-level boosts / penalties.\n    if _is_test_path(file_part):\n        score += _PENALTY_TEST_FILE\n\n    file_stem_tokens = set(_tokenize(file_part.rsplit(\"/\", 1)[-1].rsplit(\"\\\\\", 1)[-1]))\n    if file_stem_tokens & _ENTRY_BOOST_FILES:\n        score += _SCORE_BOOST_FILE\n    elif _is_important_dir(file_part):\n        score += _SCORE_IMPORTANT_DIR\n    elif file_tokens & _ENTRY_FILE_TOKENS:\n        score += _SCORE_FILE_HEURISTIC\n\n    if node[\"type\"] in (\"function\", \"method\") and fan_in.get(nid, 0) >= _FAN_IN_HIGH:\n        score += _SCORE_FAN_IN\n\n    return score"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_type_preference",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 461,
+      "code": "def _type_preference(ntype: str) -> int:\n    \"\"\"Sort tiebreak: prefer concrete code symbols over files/classes.\"\"\"\n    return {\"function\": 0, \"method\": 0, \"class\": 1, \"file\": 2}.get(ntype, 3)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_fallback_entries",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 466,
+      "code": "def _fallback_entries(\n    nodes: list[Node],\n    edges: list[Edge],\n    max_entries: int,\n) -> list[str]:\n    \"\"\"Return highest-degree function/method nodes when nothing matched.\"\"\"\n    degree: dict[str, int] = {}\n    for edge in edges:\n        degree[edge[\"from\"]] = degree.get(edge[\"from\"], 0) + 1\n        degree[edge[\"to\"]] = degree.get(edge[\"to\"], 0) + 1\n\n    code_nodes = [n for n in nodes if n[\"type\"] in (\"function\", \"method\")]\n    if not code_nodes:\n        # Graph without any code \u2014 fall back to file nodes.\n        code_nodes = [n for n in nodes if n[\"type\"] == \"file\"]\n    code_nodes.sort(key=lambda n: (-degree.get(n[\"id\"], 0), n[\"id\"]))\n    return [n[\"id\"] for n in code_nodes[:max_entries]]"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 80,
-      "code": "def find_entry_points(keywords: list[str], nodes: list[Node]) -> list[str]:\n    \"\"\"Return node IDs whose name or file path contains any keyword.\"\"\"\n    entries: list[str] = []\n    for node in nodes:\n        if node[\"type\"] not in (\"function\", \"method\", \"class\", \"file\"):\n            continue\n        nid: str = node[\"id\"]\n        # The part after the last ':' is the bare symbol; before it is the file.\n        label = nid.split(\":\")[-1].lower()\n        file_part = nid.split(\":\")[0].lower()\n        for kw in keywords:\n            if kw in label or kw in file_part:\n                entries.append(nid)\n                break\n    return entries"
+      "line": 485,
+      "code": "def find_entry_points(\n    keywords: list[str],\n    nodes: list[Node],\n    edges: list[Edge] | None = None,\n    max_entries: int = _MAX_ENTRIES,\n) -> list[str]:\n    \"\"\"Return the top-*max_entries* (default 5) strictly-qualified entry nodes.\n\n    Strict qualification rules\n    --------------------------\n    A node **must** satisfy the hard gate in :func:`_score_node` to be\n    considered: its symbol name **or** file path must contain a primary\n    keyword token.  Synonym-only matches from unrelated modules are rejected.\n    The final score must also reach ``_ENTRY_MIN_SCORE`` (currently 3).\n\n    Scoring rubric (see :func:`_score_node` for full details)\n    ----------------------------------------------------------\n    * ``+3`` per exact keyword token hit on the **symbol name**.\n    * ``+2`` per exact keyword token hit on the **file path**.\n    * ``+2`` per synonym hit on the symbol name.\n    * ``+1`` per synonym hit on the file path.\n    * ``+3`` strong boost: file is auth.py / security.py / middleware / routes / \u2026\n    * ``+2`` if the file lives in an important directory (auth/service/core/api).\n    * ``+1`` if the file name resembles a generic entry-point module.\n    * ``+2`` if the symbol has high incoming-call count (fan-in \u2265 3).\n    * ``-3`` if the path contains a test/mock/fixture segment.\n\n    No-keyword behaviour\n    --------------------\n    When *keywords* is empty the query gives us nothing to anchor on; the\n    fallback returns the highest-degree functions so traversal can still start\n    somewhere meaningful.\n\n    When *keywords* are present but **no node passes the hard gate**, an empty\n    list is returned rather than falling back to random high-degree nodes.\n    The caller (``run_query``) must handle this gracefully.\n    \"\"\"\n    edges_list = edges or []\n    fan_in = _compute_fan_in(edges_list)\n    kw_weights = _weighted_keywords(keywords)\n\n    if not kw_weights:\n        return _fallback_entries(nodes, edges_list, max_entries)\n\n    # The hard module gate is only useful when the query contains auth/security\n    # domain keywords \u2014 it keeps \"login\" queries from matching unrelated files.\n    # For general code queries (\"compress_code\", \"parse_query\") the gate would\n    # eliminate every node, so we bypass it entirely in that case.\n    _strong_domain_kws = {\n        k for k, w in kw_weights.items()\n        if w >= 2 and k in _ENTRY_MODULE_KEYWORDS\n    }\n    apply_module_gate = bool(_strong_domain_kws)\n\n    scored: list[tuple[int, int, str]] = []\n    for node in nodes:\n        nid = node[\"id\"]\n        file_part, _, _ = nid.rpartition(\":\")\n        if not file_part:\n            file_part = nid\n\n        # \u2500\u2500 Hard module pre-filter (auth-domain queries only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n        if apply_module_gate and not _is_relevant_module(file_part, kw_weights):\n            continue\n        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n        s = _score_node(node, kw_weights, fan_in)\n        if s >= _ENTRY_MIN_SCORE:\n            scored.append((-s, _type_preference(node[\"type\"]), node[\"id\"]))\n\n    if not scored:\n        return []\n\n    scored.sort()\n    picked: list[str] = []\n    seen: set[str] = set()\n    for _, _, nid in scored:\n        if nid in seen:\n            continue\n        seen.add(nid)\n        picked.append(nid)\n        if len(picked) >= max_entries:\n            break\n    return picked"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_build_adjacency",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 101,
+      "line": 575,
       "code": "def _build_adjacency(edges: list[Edge]) -> tuple[dict[str, list[tuple[str, str]]], dict[str, list[tuple[str, str]]]]:\n    \"\"\"Build forward and reverse adjacency maps from the edge list.\n\n    Returns ``(outgoing, incoming)`` where each value is a list of\n    ``(neighbour_id, edge_type)`` tuples.\n    \"\"\"\n    outgoing: dict[str, list[tuple[str, str]]] = {}\n    incoming: dict[str, list[tuple[str, str]]] = {}\n    for edge in edges:\n        src, dst, etype = edge[\"from\"], edge[\"to\"], edge[\"type\"]\n        outgoing.setdefault(src, []).append((dst, etype))\n        incoming.setdefault(dst, []).append((src, etype))\n    return outgoing, incoming"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:traverse_graph",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 116,
+      "line": 590,
       "code": "def traverse_graph(\n    entry_ids: list[str],\n    nodes: list[Node],\n    edges: list[Edge],\n    max_depth: int = _MAX_DEPTH,\n) -> dict[str, int]:\n    \"\"\"BFS from each entry node following calls, imports, and reverse-calls.\n\n    Returns a mapping of ``node_id \u2192 minimum depth`` reached.  Depth 0 means\n    the node is an entry point; depth 1 means one hop away, etc.\n    \"\"\"\n    node_ids: set[str] = {n[\"id\"] for n in nodes}\n    outgoing, incoming = _build_adjacency(edges)\n\n    # Edge types to follow in each direction.\n    _follow_out: frozenset[str] = frozenset({\"calls\", \"imports\", \"contains\", \"has_method\"})\n    _follow_in: frozenset[str] = frozenset({\"calls\"})   # reverse-calls for debugging\n\n    visited: dict[str, int] = {}\n    queue: deque[tuple[str, int]] = deque()\n\n    for eid in entry_ids:\n        if eid in node_ids:\n            queue.append((eid, 0))\n            visited[eid] = 0\n\n    while queue:\n        current, depth = queue.popleft()\n        if depth >= max_depth:\n            continue\n\n        # Forward edges\n        for neighbour, etype in outgoing.get(current, []):\n            if etype in _follow_out and neighbour not in visited:\n                visited[neighbour] = depth + 1\n                queue.append((neighbour, depth + 1))\n\n        # Reverse call edges (who calls *current*)\n        for neighbour, etype in incoming.get(current, []):\n            if etype in _follow_in and neighbour not in visited:\n                visited[neighbour] = depth + 1\n                queue.append((neighbour, depth + 1))\n\n    return visited"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_file_of",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 640,
+      "code": "def _file_of(node_id: str) -> str:\n    \"\"\"Return the file portion of a node ID (everything before the last ``:``).\"\"\"\n    file_part, sep, _ = node_id.rpartition(\":\")\n    return file_part if sep else node_id"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_module_scores",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 646,
+      "code": "def _module_scores(\n    visited: dict[str, int],\n    node_map: dict[str, Node],\n    kw_weights: dict[str, int],\n) -> dict[str, int]:\n    \"\"\"Compute a per-file relevance score for every module touched by traversal.\n\n    Rubric\n    ------\n    * ``+3``  file path contains a module-level keyword (auth/login/security/\u2026).\n    * ``+2``  file path contains any query keyword (weight >= 2).\n    * ``+2``  the file contains \u22652 visited nodes whose symbol names hit a\n              keyword with weight >= 2.\n    \"\"\"\n    strong_kws = {k for k, w in kw_weights.items() if w >= 2}\n\n    relevant_fn_count: dict[str, int] = {}\n    for nid in visited:\n        node = node_map.get(nid)\n        if node is None or node.get(\"type\") not in (\"function\", \"method\"):\n            continue\n        file = _file_of(nid)\n        _, _, sym = nid.rpartition(\":\")\n        name_tokens = set(_tokenize(sym))\n        if name_tokens & strong_kws:\n            relevant_fn_count[file] = relevant_fn_count.get(file, 0) + 1\n\n    all_files: set[str] = {_file_of(nid) for nid in visited}\n\n    scores: dict[str, int] = {}\n    for file in all_files:\n        s = 0\n        file_tokens = set(_tokenize(file))\n        path_segments = {seg.lower() for seg in re.split(r\"[/\\\\]\", file) if seg}\n\n        if path_segments & _MODULE_KEYWORDS:\n            s += 3\n        if file_tokens & strong_kws:\n            s += 2\n        if relevant_fn_count.get(file, 0) >= 2:\n            s += 2\n        scores[file] = s\n    return scores"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_keyword_relevance_score",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "line": 691,
+      "code": "def _keyword_relevance_score(\n    node: Node,\n    kw_weights: dict[str, int],\n    high_score_neighbours: set[str],\n    module_boost: int = 0,\n) -> int:\n    \"\"\"Weighted keyword relevance score for traversal filtering.\n\n    Uses the same ``kw_weights`` dict as ``_score_node`` so that the\n    relative importance of exact vs. expanded keywords is consistent\n    across both entry-point selection and traversal filtering.\n\n    Rubric\n    ------\n    * name token hit:  ``weight`` (from kw_weights).\n    * file path hit:   ``weight // 2`` (path is weaker signal than name).\n    * code body hit:   ``weight // 2``, capped at 2 total.\n    * neighbour of high-scoring node: ``+1``.\n    * module boost: ``+2`` (relevant module) / ``-3`` (unrelated module).\n    * no match at all: ``-2``.\n    \"\"\"\n    nid: str = node[\"id\"]\n    file_part, _, sym_part = nid.rpartition(\":\")\n    if not file_part:\n        file_part = nid\n        sym_part = \"\"\n\n    name_tokens = set(_tokenize(sym_part))\n    file_tokens = set(_tokenize(file_part))\n    code_text = (node.get(\"code\") or \"\").lower()\n\n    name_score = sum(kw_weights[t] for t in name_tokens if t in kw_weights)\n    file_score = sum(kw_weights[t] // 2 for t in file_tokens if t in kw_weights)\n    code_score = min(\n        sum(w // 2 for kw, w in kw_weights.items() if kw in code_text), 2\n    )\n\n    has_any_match = bool(name_score or file_score or code_score)\n\n    score = name_score + file_score + code_score\n    score += module_boost\n\n    if nid in high_score_neighbours:\n        score += 1\n\n    if not has_any_match:\n        score -= 2\n\n    return score"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:rank_nodes",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 166,
-      "code": "def rank_nodes(\n    visited: dict[str, int],\n    entry_ids: list[str],\n    all_nodes: list[Node],\n    max_nodes: int = _MAX_NODES,\n) -> list[Node]:\n    \"\"\"Return up to *max_nodes* candidate nodes ordered by relevance.\n\n    Primary key \u2014 structural priority (entry < direct code < direct struct\n    < indirect code < indirect struct).  Secondary key \u2014 negative importance\n    score, so within a tier the higher-signal nodes surface first.  The\n    pruner then narrows the candidates further.\n    \"\"\"\n    entry_set = set(entry_ids)\n    node_map: dict[str, Node] = {n[\"id\"]: n for n in all_nodes}\n\n    def _priority(node_id: str) -> int:\n        if node_id in entry_set:\n            return 0\n        depth = visited.get(node_id, 99)\n        ntype = node_map.get(node_id, {}).get(\"type\", \"\")\n        is_code = ntype in (\"function\", \"method\")\n        if depth == 1:\n            return 1 if is_code else 2\n        if depth == 2:\n            return 3 if is_code else 4\n        return 10\n\n    def _sort_key(node_id: str) -> tuple[int, int]:\n        node = node_map.get(node_id, {})\n        return (_priority(node_id), -importance_score(node))\n\n    ranked_ids = sorted(visited.keys(), key=_sort_key)\n    result: list[Node] = []\n    for nid in ranked_ids:\n        node = node_map.get(nid)\n        if node is not None:\n            result.append(node)\n        if len(result) >= max_nodes:\n            break\n    return result"
+      "line": 742,
+      "code": "def rank_nodes(\n    visited: dict[str, int],\n    entry_ids: list[str],\n    all_nodes: list[Node],\n    keywords: list[str] | None = None,\n    max_nodes: int = _MAX_NODES,\n    threshold: int = _RELEVANCE_THRESHOLD,\n) -> list[Node]:\n    \"\"\"Return up to *max_nodes* candidate nodes ordered by relevance.\n\n    Three-stage filtering\n    ---------------------\n    1. **Module-level scoring** \u2014 every file touched by traversal gets a\n       module score (+3 path keyword, +2 primary keyword, +2 multi-function).\n       High-scoring modules boost each of their nodes by +2; low-scoring\n       (unrelated) modules penalise each node by -3.\n\n    2. **Keyword-relevance gate** \u2014 using the module-adjusted score:\n       * Entry points: always kept.\n       * Same-file nodes (any depth): kept if score >= threshold.\n       * Cross-module 1-hop nodes: kept if score >= threshold.\n       * Cross-module depth-2+ nodes: **hard-dropped** (max 1 cross-module hop).\n       * Any node with score < threshold AND not in an entry-point file: dropped.\n\n    3. **Structural priority sort** \u2014 survivors are ordered by\n       (depth, node type, -importance_score) so the pruner receives a\n       well-ranked shortlist and can focus on shape-based logic.\n\n    Keyword-relevance rubric (see :func:`_keyword_relevance_score`)\n    ---------------------------------------------------------------\n    * ``+3``  symbol name contains keyword\n    * ``+2``  file path contains keyword\n    * ``+2``  docstring / code body contains keyword\n    * ``+1``  synonym hit\n    * ``+1``  adjacent to a high-relevance node\n    * ``+2``  node lives in a high-relevance module\n    * ``-3``  node lives in an unrelated module\n    * ``-2``  no keyword match at all\n    \"\"\"\n    entry_set = set(entry_ids)\n    node_map: dict[str, Node] = {n[\"id\"]: n for n in all_nodes}\n\n    kws: list[str] = keywords or []\n    kw_weights: dict[str, int] = _weighted_keywords(kws)\n\n    # Files that contain at least one entry point \u2014 used for the hard filter.\n    entry_files: set[str] = {_file_of(eid) for eid in entry_ids}\n\n    # ------------------------------------------------------------------\n    # Stage 1: module-level scoring.\n    # ------------------------------------------------------------------\n    mod_scores: dict[str, int] = _module_scores(visited, node_map, kw_weights)\n\n    def _module_boost(node_id: str) -> int:\n        \"\"\"Per-node module adjustment.\n\n        +2  node is in a high-relevance module (module_score >= _MODULE_HIGH_SCORE).\n        +2  node is in an auth cluster (file has >= 2 high-scoring neighbours).\n        -5  node is in a completely unrelated module (module_score == 0).\n            The -5 penalty exceeds the maximum single-token name score (weight\n            3 * 1.5 = 4 in _score_node; weight 3 in _keyword_relevance_score),\n            making it impossible for a lone keyword hit to survive unpenalised.\n        \"\"\"\n        if not kw_weights:\n            return 0\n        ms = mod_scores.get(_file_of(node_id), 0)\n        boost = 0\n        if ms >= _MODULE_HIGH_SCORE:\n            boost += 2\n        elif ms == 0:\n            boost -= 5   # stronger than any single-token name hit\n        if _file_of(node_id) in cluster_files:\n            boost += 2\n        return boost\n\n    HIGH_SCORE_CUTOFF = 4  # must be defined before cluster detection uses it\n\n    # Stage 1b: auth-cluster detection.\n    # A file qualifies as a \"cluster\" when >= 2 of its visited nodes score\n    # above HIGH_SCORE_CUTOFF on raw keyword signal alone (no module boost yet).\n    # All nodes in a cluster file receive an additional +2 in _module_boost,\n    # lifting the cohesive auth surface above the noise floor.\n    _pre_cluster_scores: dict[str, int] = {\n        nid: _keyword_relevance_score(node_map[nid], kw_weights, set(), module_boost=0)\n        for nid in visited\n        if nid in node_map\n    }\n    _file_high_count: dict[str, int] = {}\n    for nid, s in _pre_cluster_scores.items():\n        if s >= HIGH_SCORE_CUTOFF:\n            f = _file_of(nid)\n            _file_high_count[f] = _file_high_count.get(f, 0) + 1\n\n    cluster_files: set[str] = {\n        f for f, cnt in _file_high_count.items() if cnt >= 2\n    }\n\n    # Stage 2a: raw keyword scores with module boost + cluster boost applied.\n    raw_scores: dict[str, int] = {}\n    for nid in visited:\n        node = node_map.get(nid)\n        if node is None:\n            continue\n        raw_scores[nid] = _keyword_relevance_score(\n            node, kw_weights, set(),\n            module_boost=_module_boost(nid),\n        )\n\n    high_score_ids: set[str] = {\n        nid for nid, s in raw_scores.items() if s >= HIGH_SCORE_CUTOFF\n    }\n\n    # ------------------------------------------------------------------\n    # Stage 2b: priority sort + gate.\n    # ------------------------------------------------------------------\n    def _priority(node_id: str) -> int:\n        \"\"\"Lower value = higher priority in the final sort.\"\"\"\n        if node_id in entry_set:\n            return 0\n        depth = visited.get(node_id, 99)\n        ntype = node_map.get(node_id, {}).get(\"type\", \"\")\n        is_code = ntype in (\"function\", \"method\")\n        same_file = _file_of(node_id) in entry_files\n        # Same-file nodes always rank ahead of cross-module nodes at same depth.\n        if depth == 1:\n            return 1 if (is_code and same_file) else (2 if same_file else 3)\n        if depth == 2:\n            return 4 if (is_code and same_file) else (5 if same_file else 6)\n        return 10\n\n    def _sort_key(node_id: str) -> tuple[int, int]:\n        node = node_map.get(node_id, {})\n        return (_priority(node_id), -importance_score(node))\n\n    kept_ids: list[str] = []\n    for nid in sorted(visited.keys(), key=_sort_key):\n        node = node_map.get(nid)\n        if node is None:\n            continue\n\n        depth = visited.get(nid, 99)\n        in_entry_file = _file_of(nid) in entry_files\n        is_entry = nid in entry_set\n\n        if kw_weights:\n            if not in_entry_file and depth > 1:\n                continue\n\n            if not is_entry:\n                rel_score = _keyword_relevance_score(\n                    node, kw_weights, high_score_ids,\n                    module_boost=_module_boost(nid),\n                )\n                if rel_score < threshold and not in_entry_file:\n                    continue\n                if rel_score < 0:\n                    continue\n\n        kept_ids.append(nid)\n        if len(kept_ids) >= max_nodes:\n            break\n\n    return [node_map[nid] for nid in kept_ids if nid in node_map]"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:build_context",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 213,
+      "line": 911,
       "code": "def build_context(\n    ranked_nodes: list[Node],\n    entry_ids: list[str],\n    keywords: list[str] | None = None,\n    compress: bool = True,\n    inline_hints: dict[str, list[str]] | None = None,\n) -> str:\n    \"\"\"Assemble code snippets ordered by entry \u2192 callees \u2192 callers.\n\n    Each function/method snippet is passed through :func:`compress_code` so\n    the emitted context contains only debug-relevant lines plus a\n    ``# calls:`` dependency hint.  When *inline_hints* is provided, each\n    entry-node block gets its helper hints appended (one per line).  File\n    and class nodes without code contribute a comment stub only.\n    \"\"\"\n    entry_set = set(entry_ids)\n    kws = keywords or []\n    hints = inline_hints or {}\n\n    # Split into ordered buckets.\n    entries: list[Node] = []\n    rest: list[Node] = []\n    for node in ranked_nodes:\n        (entries if node[\"id\"] in entry_set else rest).append(node)\n\n    ordered = entries + rest\n    seen_ids: set[str] = set()\n    parts: list[str] = []\n\n    for node in ordered:\n        nid = node[\"id\"]\n        if nid in seen_ids:\n            continue\n        seen_ids.add(nid)\n\n        code: str = node.get(\"code\", \"\").strip()\n        ntype: str = node.get(\"type\", \"\")\n\n        if code:\n            if compress and ntype in (\"function\", \"method\"):\n                code = compress_code(code, kws).strip()\n            if not code:\n                continue\n            header = f\"# [{ntype}] {nid}\"\n            block = f\"{header}\\n{code}\"\n            if nid in hints:\n                block += \"\\n\" + \"\\n\".join(hints[nid])\n            parts.append(block)\n        else:\n            parts.append(f\"# [{ntype}] {nid}\")\n\n    return \"\\n\\n\".join(parts)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:estimate_tokens",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 271,
+      "line": 969,
       "code": "def estimate_tokens(text: str) -> int:\n    \"\"\"Rough token count: characters / 4 (GPT-style approximation).\"\"\"\n    return max(1, len(text) // 4)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:run_query",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 280,
-      "code": "def run_query(query: str, graph: Graph, compress: bool = True) -> QueryResult:\n    \"\"\"Full retrieval pipeline: query string + graph \u2192 QueryResult.\n\n    Pipeline: parse \u2192 entry-points \u2192 BFS traversal \u2192 rank (wide funnel) \u2192\n    **prune** (classify, dedup, inline) \u2192 compress \u2192 assemble.\n    ``token_estimate_raw`` measures the pre-compression pre-prune baseline,\n    so the CLI can report an end-to-end savings ratio.\n    \"\"\"\n    parsed = parse_query(query)\n    intent: str = parsed[\"intent\"]\n    keywords: list[str] = parsed[\"keywords\"]\n\n    nodes: list[Node] = graph[\"nodes\"]\n    edges: list[Edge] = graph[\"edges\"]\n\n    entry_ids = find_entry_points(keywords, nodes)\n    visited = traverse_graph(entry_ids, nodes, edges)\n    ranked = rank_nodes(visited, entry_ids, nodes)\n\n    # Narrow candidates into a minimal, categorised set.\n    result: PruneResult = prune(ranked, entry_ids, visited)\n\n    context_text = build_context(\n        result.kept,\n        entry_ids,\n        keywords,\n        compress=compress,\n        inline_hints=result.inline_hints,\n    )\n    # Baseline: untouched candidates, no compression, no inlining.\n    raw_text = build_context(ranked, entry_ids, keywords, compress=False)\n\n    return QueryResult(\n        intent=intent,\n        keywords=keywords,\n        entry_points=entry_ids,\n        nodes_selected=[n[\"id\"] for n in result.kept],\n        categories=dict(result.categories),\n        inline_hints=dict(result.inline_hints),\n        token_estimate=estimate_tokens(context_text),\n        token_estimate_raw=estimate_tokens(raw_text),\n        context=context_text,\n    )"
+      "line": 978,
+      "code": "def run_query(query: str, graph: Graph, compress: bool = True) -> QueryResult:\n    \"\"\"Full retrieval pipeline: query string + graph \u2192 QueryResult.\n\n    Pipeline: parse \u2192 **expand** \u2192 entry-points \u2192 BFS traversal \u2192 rank \u2192\n    **prune** (classify, dedup, inline) \u2192 compress \u2192 assemble.\n\n    Keyword expansion\n    -----------------\n    After parsing, raw keywords (e.g. ``[\"login\"]``) are expanded using the\n    synonym table before being passed to any downstream stage.  This means\n    the entry-point hard gate, module scoring, and traversal filtering all\n    operate on the *full* expanded set::\n\n        \"login\"  \u2192  [\"login\", \"auth\", \"token\", \"jwt\", \"session\", \"authenticate\", \u2026]\n\n    The ``QueryResult.keywords`` field still holds the **original** user\n    keywords so the caller can display what the user actually typed.\n    ``token_estimate_raw`` measures the pre-compression/pre-prune baseline.\n    \"\"\"\n    parsed = parse_query(query)\n    intent: str = parsed[\"intent\"]\n    raw_keywords: list[str] = parsed[\"keywords\"]   # what the user literally typed\n\n    # ------------------------------------------------------------------ #\n    # Expand keywords BEFORE any downstream stage runs.                   #\n    # This is the integration point that makes synonym matching work.     #\n    # Without this, \"login\" never matches auth.py:create_access_token.   #\n    # ------------------------------------------------------------------ #\n    # Build weighted keyword map and derive the operative keyword list from it.\n    # Tokens with weight 0 are excluded; higher-weight tokens come first.\n    kw_weights_global = _weighted_keywords(raw_keywords)\n    keywords: list[str] = sorted(\n        kw_weights_global, key=lambda k: -kw_weights_global[k]\n    )\n\n    nodes: list[Node] = graph[\"nodes\"]\n    edges: list[Edge] = graph[\"edges\"]\n\n    entry_ids = find_entry_points(keywords, nodes, edges)\n\n    # find_entry_points returns [] when keywords were provided but no node\n    # satisfied the hard gate (name OR file must contain a primary keyword).\n    # Proceeding with an empty entry list would produce meaningless traversal;\n    # return an empty result instead so the caller can surface a clear signal.\n    if not entry_ids:\n        return QueryResult(\n            intent=intent,\n            keywords=keywords,\n            entry_points=[],\n            nodes_selected=[],\n            categories={},\n            inline_hints={},\n            token_estimate=1,\n            token_estimate_raw=1,\n            context=\"\",\n        )\n\n    visited = traverse_graph(entry_ids, nodes, edges)\n    ranked = rank_nodes(visited, entry_ids, nodes, keywords=keywords)\n\n    # Narrow candidates into a minimal, categorised set.\n    result: PruneResult = prune(ranked, entry_ids, visited)\n\n    context_text = build_context(\n        result.kept,\n        entry_ids,\n        keywords,\n        compress=compress,\n        inline_hints=result.inline_hints,\n    )\n    # Baseline: untouched candidates, no compression, no inlining.\n    raw_text = build_context(ranked, entry_ids, keywords, compress=False)\n\n    return QueryResult(\n        intent=intent,\n        keywords=raw_keywords,    # show user's original words, not the expanded set\n        entry_points=entry_ids,\n        nodes_selected=[n[\"id\"] for n in result.kept],\n        categories=dict(result.categories),\n        inline_hints=dict(result.inline_hints),\n        token_estimate=estimate_tokens(context_text),\n        token_estimate_raw=estimate_tokens(raw_text),\n        context=context_text,\n    )"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:Graph",
       "type": "class",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 20
+      "line": 21
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:QueryResult",
       "type": "class",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
-      "line": 25
+      "line": 26
     }
   ],
   "edges": [
@@ -466,6 +645,11 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:query",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:run_query",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:query",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
       "type": "calls"
     },
     {
@@ -621,6 +805,136 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/graph_builder.py:_maybe_add_call",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/graph_builder.py:_name_to_ids_local",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:detect_intent",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:build_flow",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:extract_failures",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:debug_hints",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:suggest_implementation",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_bare",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_token_line",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_explain",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_generate",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_lookup",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:debug_hints",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_token_line",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_bare",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_explain",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_token_line",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_generate",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:suggest_implementation",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_lookup",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_token_line",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_lookup",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_bare",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:build_flow",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:extract_failures",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_lookup",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_bare",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_debug",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_explain",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:format_intent_output",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:_format_generate",
       "type": "calls"
     },
     {
@@ -905,6 +1219,56 @@
     },
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_expand_keywords",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_compute_fan_in",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_test_path",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_important_dir",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_relevant_module",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_type_preference",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_fallback_entries",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
       "type": "contains"
     },
@@ -916,6 +1280,21 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:traverse_graph",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_file_of",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_module_scores",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_keyword_relevance_score",
       "type": "contains"
     },
     {
@@ -949,8 +1328,113 @@
       "type": "contains"
     },
     {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:parse_query",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/intent.py:detect_intent",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_expand_keywords",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_test_path",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_relevant_module",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_test_path",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_important_dir",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_compute_fan_in",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_fallback_entries",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_score_node",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_is_relevant_module",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:find_entry_points",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_type_preference",
+      "type": "calls"
+    },
+    {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:traverse_graph",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_build_adjacency",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_module_scores",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_file_of",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_module_scores",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_keyword_relevance_score",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_tokenize",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:rank_nodes",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:rank_nodes",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_module_scores",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:rank_nodes",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_file_of",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:rank_nodes",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_keyword_relevance_score",
       "type": "calls"
     },
     {
@@ -966,6 +1450,11 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:run_query",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:parse_query",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:run_query",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/retrieval.py:_weighted_keywords",
       "type": "calls"
     },
     {

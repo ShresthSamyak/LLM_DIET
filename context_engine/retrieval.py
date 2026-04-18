@@ -7,6 +7,7 @@ from collections import deque
 from typing import Any, TypedDict
 
 from .compressor import compress_code
+from .intent import INTENT_FILTER_WORDS, detect_intent
 from .pruner import PruneResult, importance_score, prune
 
 # ---------------------------------------------------------------------------
@@ -38,11 +39,13 @@ class QueryResult(TypedDict):
 # Constants
 # ---------------------------------------------------------------------------
 
+# _DEBUG_TRIGGERS kept for reference; intent detection now lives in intent.py.
 _DEBUG_TRIGGERS: frozenset[str] = frozenset({"fix", "bug", "error", "issue", "debug", "crash", "fail", "broken"})
 _STOP_WORDS: frozenset[str] = frozenset({
     "a", "an", "the", "in", "on", "at", "to", "for", "of", "and", "or",
-    "is", "it", "be", "do", "me", "my", "we", "us", "i", "with", "this",
-    "that", "have", "has", "not", "are", "was", "but", "get", "set",
+    "is", "it", "be", "do", "does", "me", "my", "we", "us", "i", "with",
+    "this", "that", "have", "has", "not", "are", "was", "but", "get", "set",
+    "work", "works", "working", "show", "tell", "want", "need", "help",
 })
 
 _MAX_NODES = 12          # hard cap on nodes passed to the pruner
@@ -66,14 +69,17 @@ _MODULE_HIGH_SCORE = 3   # module score threshold that triggers a per-node boost
 def parse_query(query: str) -> dict[str, Any]:
     """Return intent + keywords extracted from a raw query string.
 
-    Intent is ``"debug"`` when the query contains a debugging trigger word,
-    otherwise ``"lookup"``.  Keywords are lower-cased non-stop words that are
-    likely symbol names (letters/digits/underscores only).
+    Intent is one of ``debug | explain | generate | lookup`` — detected by
+    :func:`intent.detect_intent` using phrase patterns then single-word
+    triggers in priority order.
+
+    Keywords are lower-cased tokens stripped of stop words and intent trigger
+    words so that the code-search stage only sees meaningful symbol names.
     """
+    intent = detect_intent(query)
     tokens = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", query.lower())
-    intent = "debug" if _DEBUG_TRIGGERS & set(tokens) else "lookup"
-    keywords = [t for t in tokens if t not in _STOP_WORDS and t not in _DEBUG_TRIGGERS]
-    # Deduplicate preserving order.
+    _filter = _STOP_WORDS | INTENT_FILTER_WORDS
+    keywords = [t for t in tokens if t not in _filter]
     seen: set[str] = set()
     unique_kw: list[str] = []
     for kw in keywords:
@@ -520,6 +526,16 @@ def find_entry_points(
     if not kw_weights:
         return _fallback_entries(nodes, edges_list, max_entries)
 
+    # The hard module gate is only useful when the query contains auth/security
+    # domain keywords — it keeps "login" queries from matching unrelated files.
+    # For general code queries ("compress_code", "parse_query") the gate would
+    # eliminate every node, so we bypass it entirely in that case.
+    _strong_domain_kws = {
+        k for k, w in kw_weights.items()
+        if w >= 2 and k in _ENTRY_MODULE_KEYWORDS
+    }
+    apply_module_gate = bool(_strong_domain_kws)
+
     scored: list[tuple[int, int, str]] = []
     for node in nodes:
         nid = node["id"]
@@ -527,11 +543,8 @@ def find_entry_points(
         if not file_part:
             file_part = nid
 
-        # ── Hard module pre-filter ──────────────────────────────────────────
-        # The file path must contain a strong keyword (weight >= 2).
-        # Nodes in unrelated modules are eliminated HERE, before scoring.
-        # This is a filter, not a penalty — they never enter the scored list.
-        if not _is_relevant_module(file_part, kw_weights):
+        # ── Hard module pre-filter (auth-domain queries only) ───────────────
+        if apply_module_gate and not _is_relevant_module(file_part, kw_weights):
             continue
         # ──────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import typer
 
 from .graph_builder import build_graph
+from .intent import format_intent_output
 from .parser import parse_file
 from .retrieval import run_query
 
@@ -89,7 +90,7 @@ def index(
 
     node_counts = Counter(n["type"] for n in graph["nodes"])
     edge_counts = Counter(e["type"] for e in graph["edges"])
-    typer.echo(f"Graph saved → {out_path}")
+    typer.echo(f"Graph saved -> {out_path}")
     typer.echo(
         f"  nodes : {len(graph['nodes'])}  "
         + "  ".join(f"{t}={c}" for t, c in sorted(node_counts.items()))
@@ -130,39 +131,14 @@ def query(
         typer.echo(json.dumps(result, indent=2))
         return
 
-    # Human-readable output.
-    typer.echo(f"intent        : {result['intent']}")
-    typer.echo(f"keywords      : {', '.join(result['keywords'])}")
-    typer.echo(f"entry points  : {len(result['entry_points'])}")
-    for ep in result["entry_points"]:
-        typer.echo(f"  • {ep}")
-    cats = result["categories"]
-    from collections import Counter as _C
-    cat_counts = _C(cats.values())
-    typer.echo(
-        f"nodes kept    : {len(result['nodes_selected'])}  "
-        + "  ".join(f"{k}={v}" for k, v in sorted(cat_counts.items()))
-    )
-    inline_count = sum(len(v) for v in result["inline_hints"].values())
-    if inline_count:
-        typer.echo(f"inline hints  : {inline_count}")
-
-    raw_tokens = result["token_estimate_raw"]
-    compressed_tokens = result["token_estimate"]
-    if raw_tokens > 0:
-        saved_pct = 100 * (raw_tokens - compressed_tokens) // raw_tokens
-    else:
-        saved_pct = 0
-    typer.echo(
-        f"tokens        : ~{compressed_tokens} (raw ~{raw_tokens}, −{saved_pct}%)"
-    )
-    typer.echo("")
-    typer.echo("─" * 72)
-    typer.echo(result["context"])
-    typer.echo("─" * 72)
+    typer.echo(format_intent_output(result, graph))
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     app()
 
 
