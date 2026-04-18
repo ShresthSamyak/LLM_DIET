@@ -381,30 +381,52 @@ def group_components(nodes: list[Node]) -> dict[str, list[str]]:
 
 
 def _detect_framework(nodes: list[Node]) -> str:
-    """Detect the web framework from import patterns in code snippets."""
+    """Detect web framework from code snippets. Scans all supplied nodes."""
     for node in nodes:
         code = node.get("code", "")
         if not code:
             continue
         if any(sig in code for sig in ("APIRouter", "Depends(", "HTTPException", "fastapi")):
             return "fastapi"
-        if any(sig in code for sig in ("Blueprint", "@app.route", "Flask(", "flask")):
+        if "fastapi" in code.lower():
+            return "fastapi"
+        if any(sig in code for sig in ("Blueprint", "@app.route", "Flask(")):
             return "flask"
-        if any(sig in code for sig in ("HttpResponse", "render(request", "models.Model", "django")):
+        if "flask" in code.lower():
+            return "flask"
+        if any(sig in code for sig in ("HttpResponse", "render(request", "models.Model")):
+            return "django"
+        if "django" in code.lower():
             return "django"
     return "generic"
 
 
-def _find_fn(nodes: list[Node], *signals: str) -> str | None:
-    """Return the first function name whose lowercased form contains any signal."""
+_ASYNC_PATTERN = re.compile(r"^\s*async def ", re.MULTILINE)
+_AWAIT_PATTERN = re.compile(r"^\s+await ", re.MULTILINE)
+
+
+def _detect_async(nodes: list[Node]) -> bool:
+    """Return True if any node contains real async code (not just docstring mentions)."""
+    for node in nodes:
+        code = node.get("code", "")
+        if _ASYNC_PATTERN.search(code) or _AWAIT_PATTERN.search(code):
+            return True
+    return False
+
+
+def _find_fn(nodes: list[Node], fallback: str, *signals: str) -> tuple[str, bool]:
+    """Return (name, found_in_graph).
+
+    Searches function/method nodes for any name containing a signal token.
+    When not found, returns (fallback, False) so callers can surface MISSING.
+    """
     for node in nodes:
         if node.get("type") not in ("function", "method"):
             continue
         _, _, name = node["id"].rpartition(":")
-        name_lower = name.lower()
-        if any(sig in name_lower for sig in signals):
-            return name
-    return None
+        if any(sig in name.lower() for sig in signals):
+            return name, True
+    return fallback, False
 
 
 def _short_path(fpath: str) -> str:
@@ -415,17 +437,20 @@ def _short_path(fpath: str) -> str:
 
 def _gen_auth_snippet(
     framework: str,
+    is_async: bool,
     verify_fn: str,
     token_fn: str,
     user_fn: str,
     db_fn: str,
 ) -> str:
+    a = "async " if is_async else ""
+    aw = "await " if is_async else ""
     if framework == "fastapi":
         return (
-            f'@router.post("/login", response_model=TokenResponse)\n'
-            f'async def login(data: LoginRequest, db=Depends({db_fn})):\n'
-            f'    user = await {user_fn}(db, data.email)\n'
-            f'    if not user or not {verify_fn}(data.password, user.hashed_password):\n'
+            f'@router.post("/login")\n'
+            f'{a}def login(email: str, password: str, db: AsyncSession = Depends({db_fn})):\n'
+            f'    user = {aw}{user_fn}(db, email)\n'
+            f'    if not user or not {verify_fn}(password, user.hashed_password):\n'
             f'        raise HTTPException(status_code=401, detail="Invalid credentials")\n'
             f'    token = {token_fn}(subject=str(user.id))\n'
             f'    return {{"access_token": token, "token_type": "bearer"}}'
@@ -442,60 +467,81 @@ def _gen_auth_snippet(
             f'    return jsonify({{"access_token": token, "token_type": "bearer"}})'
         )
     return (
-        f'def login(email: str, password: str):\n'
-        f'    user = {user_fn}(email)\n'
+        f'{a}def login(email: str, password: str):\n'
+        f'    user = {aw}{user_fn}(email)\n'
         f'    if not user or not {verify_fn}(password, user.hashed_password):\n'
-        f'        raise AuthError("Invalid credentials")\n'
+        f'        raise AuthenticationError("Invalid credentials")\n'
         f'    return {token_fn}(user.id)'
     )
 
 
-def _gen_user_snippet(framework: str, user_fn: str, db_fn: str) -> str:
+def _gen_user_snippet(
+    framework: str,
+    is_async: bool,
+    user_fn: str,
+    db_fn: str,
+) -> str:
+    a = "async " if is_async else ""
+    aw = "await " if is_async else ""
     if framework == "fastapi":
         return (
-            f'@router.post("/users", status_code=201, response_model=UserResponse)\n'
-            f'async def create_user(data: CreateUserRequest, db=Depends({db_fn})):\n'
-            f'    if await {user_fn}(db, data.email):\n'
+            f'@router.post("/users", status_code=201)\n'
+            f'{a}def create_user(data: CreateUserRequest, db: AsyncSession = Depends({db_fn})):\n'
+            f'    if {aw}{user_fn}(db, data.email):\n'
             f'        raise HTTPException(status_code=409, detail="Email already registered")\n'
-            f'    user = await save_user(db, data)\n'
+            f'    user = {aw}save_user(db, data)\n'
             f'    return user'
         )
     return (
-        f'def create_user(email: str, password: str):\n'
-        f'    if {user_fn}(email):\n'
+        f'{a}def create_user(email: str, password: str):\n'
+        f'    if {aw}{user_fn}(email):\n'
         f'        raise ValueError("Email already registered")\n'
-        f'    return save_user(email=email, hashed_password=hash_password(password))'
+        f'    return {aw}save_user(email=email, hashed_password=hash_password(password))'
     )
 
 
-def _gen_db_snippet() -> str:
+def _gen_db_snippet(is_async: bool) -> str:
+    if is_async:
+        return (
+            'class NewEntity(Base):\n'
+            '    __tablename__ = "new_entities"\n'
+            '    id = Column(Integer, primary_key=True)\n'
+            '\n'
+            'async def create_entity(db: AsyncSession, data: dict) -> NewEntity:\n'
+            '    obj = NewEntity(**data)\n'
+            '    db.add(obj)\n'
+            '    await db.commit()\n'
+            '    await db.refresh(obj)\n'
+            '    return obj'
+        )
     return (
         'class NewEntity(Base):\n'
         '    __tablename__ = "new_entities"\n'
         '    id = Column(Integer, primary_key=True)\n'
-        '    # add domain columns here\n'
         '\n'
-        'async def create_entity(db: AsyncSession, data: dict) -> NewEntity:\n'
+        'def create_entity(db: Session, data: dict) -> NewEntity:\n'
         '    obj = NewEntity(**data)\n'
         '    db.add(obj)\n'
-        '    await db.commit()\n'
-        '    await db.refresh(obj)\n'
+        '    db.commit()\n'
+        '    db.refresh(obj)\n'
         '    return obj'
     )
 
 
-def _gen_generic_snippet(name: str, framework: str) -> str:
+def _gen_generic_snippet(name: str, framework: str, is_async: bool) -> str:
     fn_name = re.sub(r"[^a-z0-9_]", "_", name.lower()).strip("_")
+    a = "async " if is_async else ""
+    aw = "await " if is_async else ""
     if framework == "fastapi":
         return (
             f'@router.post("/{fn_name}")\n'
-            f'async def {fn_name}(data: {fn_name.title().replace("_", "")}Request):\n'
-            f'    result = await process_{fn_name}(data)\n'
+            f'{a}def {fn_name}(data: dict):\n'
+            f'    result = {aw}process_{fn_name}(data)\n'
             f'    return result'
         )
     return (
-        f'def {fn_name}(data):\n'
-        f'    result = process(data)\n'
+        f'{a}def {fn_name}(data):\n'
+        f'    result = {aw}process(data)\n'
         f'    return result'
     )
 
@@ -504,25 +550,45 @@ def generate_code_snippet(
     keywords: list[str],
     nodes: list[Node],
     framework: str,
-) -> str:
-    """Generate a code snippet grounded in the actual detected function names."""
+    is_async: bool,
+) -> tuple[str, list[str]]:
+    """Generate code grounded in actual graph nodes; return (snippet, missing_deps).
+
+    ``missing_deps`` lists function names that were referenced in the snippet
+    but could not be found in the graph — the caller surfaces these explicitly
+    so the user knows what still needs to be written.
+    """
     kw = set(keywords)
 
-    verify_fn = _find_fn(nodes, "verify", "check_password", "validate_password") or "verify_password"
-    token_fn = (
-        _find_fn(nodes, "create_access", "generate_token", "create_token", "sign_token", "encode_token")
-        or "create_access_token"
-    )
-    user_fn = _find_fn(nodes, "get_user", "find_user", "fetch_user", "lookup_user") or "get_user_by_email"
-    db_fn = _find_fn(nodes, "get_db", "get_session", "db_session", "get_connection") or "get_db"
+    verify_fn, verify_found = _find_fn(nodes, "verify_password", "verify", "check_password", "validate_password")
+    token_fn, token_found = _find_fn(nodes, "create_access_token", "create_access", "generate_token", "create_token", "sign_token")
+    user_fn, user_found = _find_fn(nodes, "get_user_by_email", "get_user", "find_user", "fetch_user", "lookup_user")
+    db_fn, db_found = _find_fn(nodes, "get_db", "get_db", "get_session", "db_session", "get_connection")
+
+    missing: list[str] = []
 
     if kw & {"login", "auth", "authenticate", "signin", "jwt", "token", "password"}:
-        return _gen_auth_snippet(framework, verify_fn, token_fn, user_fn, db_fn)
+        if not user_found:
+            missing.append(f"{user_fn}(db, email)  # retrieve user record from DB")
+        if not verify_found:
+            missing.append(f"{verify_fn}(plain, hashed)  # password verification")
+        if not token_found:
+            missing.append(f"{token_fn}(subject)  # JWT generation")
+        if not db_found and framework in ("fastapi", "generic"):
+            missing.append(f"{db_fn}()  # async DB session dependency")
+        return _gen_auth_snippet(framework, is_async, verify_fn, token_fn, user_fn, db_fn), missing
+
     if kw & {"user", "account", "profile", "register", "signup"}:
-        return _gen_user_snippet(framework, user_fn, db_fn)
+        if not user_found:
+            missing.append(f"{user_fn}(db, email)  # check for existing user")
+        if not db_found and framework == "fastapi":
+            missing.append(f"{db_fn}()  # async DB session dependency")
+        return _gen_user_snippet(framework, is_async, user_fn, db_fn), missing
+
     if kw & {"db", "database", "sql", "model", "schema", "migration"}:
-        return _gen_db_snippet()
-    return _gen_generic_snippet(keywords[0] if keywords else "feature", framework)
+        return _gen_db_snippet(is_async), missing
+
+    return _gen_generic_snippet(keywords[0] if keywords else "feature", framework, is_async), missing
 
 
 # ---------------------------------------------------------------------------
@@ -630,18 +696,23 @@ def _format_explain(
 
 def _format_generate(
     result: Mapping[str, Any],
-    nodes: list[Node],
+    kept_nodes: list[Node],
+    all_nodes: list[Node],
 ) -> str:
     kws = result.get("keywords", [])
-    framework = _detect_framework(nodes)
-    groups = group_components(nodes)
-    integration_points = find_integration_points(nodes)
-    snippet = generate_code_snippet(kws, nodes, framework)
+    # Use all_nodes for framework/async detection — kept_nodes may be empty
+    # (e.g. a generate query on a codebase with no matching auth code).
+    framework = _detect_framework(all_nodes)
+    is_async = _detect_async(all_nodes)
+    groups = group_components(kept_nodes)
+    integration_points = find_integration_points(kept_nodes)
+    snippet, missing = generate_code_snippet(kws, kept_nodes, framework, is_async)
 
+    concurrency = "async" if is_async else "sync"
     lines: list[str] = [
         "intent        : GENERATE",
         f"keywords      : {', '.join(kws)}",
-        f"framework     : {framework}",
+        f"framework     : {framework}  ({concurrency})",
         "",
     ]
 
@@ -656,10 +727,16 @@ def _format_generate(
     if integration_points:
         lines.append("INTEGRATION POINT:")
         for ip in integration_points:
-            lines.append(f"  Add route in: {_short_path(ip)}")
+            lines.append(f"  Add in: {_short_path(ip)}")
         lines.append("")
 
     lines += ["GENERATED CODE:", _DIVIDER, snippet, _DIVIDER, ""]
+
+    if missing:
+        lines.append("MISSING (not found in graph — implement these first):")
+        for dep in missing:
+            lines.append(f"  - {dep}")
+        lines.append("")
 
     if result.get("context"):
         lines += ["EXISTING CODE:", _DIVIDER, result["context"], _DIVIDER]
@@ -717,11 +794,12 @@ def format_intent_output(
     * ``lookup``   → entry points + stats + code  (current behaviour)
     """
     intent = result.get("intent", "lookup")
-    all_nodes: dict[str, Any] = {n["id"]: n for n in graph.get("nodes", [])}
+    node_map: dict[str, Any] = {n["id"]: n for n in graph.get("nodes", [])}
+    graph_nodes: list[Node] = list(node_map.values())
     kept: list[Node] = [
-        all_nodes[nid]
+        node_map[nid]
         for nid in result.get("nodes_selected", [])
-        if nid in all_nodes
+        if nid in node_map
     ]
     edges: list[Edge] = graph.get("edges", [])
     entry_ids: list[str] = result.get("entry_points", [])
@@ -734,5 +812,5 @@ def format_intent_output(
     if intent == "explain":
         return _format_explain(result, flow)
     if intent == "generate":
-        return _format_generate(result, kept)
+        return _format_generate(result, kept, graph_nodes)
     return _format_lookup(result)
