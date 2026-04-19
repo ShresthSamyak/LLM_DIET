@@ -20,31 +20,75 @@ _ALIASES: dict[str, set[str]] = {
 }
 
 
+def _is_test_file(fpath: str) -> bool:
+    p = fpath.replace("\\", "/").lower()
+    name = p.split("/")[-1]
+    return name.startswith("test_") or name.endswith("_test.py") or "/test" in p or "/tests/" in p
+
+
+def _enrich(nid: str, raw: dict, calls_map: dict, callers_map: dict) -> dict:
+    node = dict(raw)
+    node["name"] = nid.split(":")[-1]
+    node["calls"] = [dst.split(":")[-1] for dst in calls_map.get(nid, [])]
+    node["callers"] = [src.split(":")[-1] for src in callers_map.get(nid, [])]
+    return node
+
+
 def resolve_nodes(selected_ids: list[str], graph: dict) -> list[dict]:
     """
-    Convert nodes_selected string IDs to enriched node dicts with
-    name, calls, and callers fields populated from the graph.
+    Resolve node IDs to enriched dicts. When test-file nodes are in the pool,
+    automatically pulls in the implementation nodes they call.
     """
     by_id: dict[str, dict] = {n["id"]: dict(n) for n in graph.get("nodes", []) if "id" in n}
 
-    calls_map: dict[str, list[str]] = {}
-    callers_map: dict[str, list[str]] = {}
+    # Track full destination IDs (not just names) to enable cross-file expansion
+    calls_map: dict[str, list[str]] = {}   # src_id -> [dst_id, ...]
+    callers_map: dict[str, list[str]] = {} # dst_id -> [src_id, ...]
     for edge in graph.get("edges", []):
         if edge.get("type") == "calls":
             src, dst = edge["from"], edge["to"]
-            calls_map.setdefault(src, []).append(dst.split(":")[-1])
-            callers_map.setdefault(dst, []).append(src.split(":")[-1])
+            calls_map.setdefault(src, []).append(dst)
+            callers_map.setdefault(dst, []).append(src)
 
-    result = []
+    resolved: dict[str, dict] = {}
     for nid in selected_ids:
-        node = by_id.get(nid)
-        if not node:
+        raw = by_id.get(nid)
+        if not raw:
             continue
-        node["name"] = nid.split(":")[-1]
-        node["calls"] = calls_map.get(nid, [])
-        node["callers"] = callers_map.get(nid, [])
-        result.append(node)
-    return result
+        resolved[nid] = _enrich(nid, raw, calls_map, callers_map)
+
+    # For test-file nodes: follow calls into implementation files
+    impl_ids: list[str] = []
+    for nid, node in list(resolved.items()):
+        if not _is_test_file(node.get("file", "")):
+            continue
+        for dst_id in calls_map.get(nid, []):
+            if dst_id not in resolved and not _is_test_file(by_id.get(dst_id, {}).get("file", "")):
+                impl_ids.append(dst_id)
+
+    for nid in impl_ids:
+        raw = by_id.get(nid)
+        if raw:
+            resolved[nid] = _enrich(nid, raw, calls_map, callers_map)
+
+    # Narrowness fallback: if all nodes share one file, add their callees
+    files = {n.get("file") for n in resolved.values()}
+    if len(files) == 1:
+        extra_ids = []
+        for nid, node in list(resolved.items()):
+            for dst_id in calls_map.get(nid, []):
+                if dst_id not in resolved and by_id.get(dst_id, {}).get("type") in ("function", "method"):
+                    extra_ids.append(dst_id)
+                    if len(extra_ids) >= 4:
+                        break
+            if len(extra_ids) >= 4:
+                break
+        for nid in extra_ids:
+            raw = by_id.get(nid)
+            if raw:
+                resolved[nid] = _enrich(nid, raw, calls_map, callers_map)
+
+    return list(resolved.values())
 
 
 def _tokens(text: str) -> set[str]:
