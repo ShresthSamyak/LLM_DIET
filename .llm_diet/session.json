@@ -1,0 +1,26 @@
+{
+  "session_id": "856df83ee015",
+  "query": "",
+  "mode": "restricted",
+  "confidence": 0.0,
+  "allowed_files": [
+    "context_engine/ranker.py",
+    "context_engine/validator.py",
+    "context_engine/apply.py",
+    "context_engine/cli.py",
+    "context_engine/compressor.py"
+  ],
+  "denied_reads": [
+    "context_engine/validator.py"
+  ],
+  "escape_attempts": {
+    "context_engine/validator.py": 1
+  },
+  "escapes": [
+    {
+      "file": "context_engine/validator.py",
+      "reason": "contains syntax check logic",
+      "attempt": 1
+    }
+  ]
+}
