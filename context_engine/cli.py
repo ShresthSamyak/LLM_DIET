@@ -37,6 +37,29 @@ def _configure_logging(verbose: bool) -> None:
     )
 
 
+def _print_debug(info: dict) -> None:
+    typer.echo("─── DEBUG ────────────────────────────────────────", err=True)
+    gate = info.get('apply_module_gate', False)
+    fallback = info.get('gate_fallback', False)
+    gate_str = ("yes" if gate else "no") + (" [fallback: gate bypassed — all nodes rejected]" if fallback else "")
+    typer.echo(f"Module gate applied: {gate_str}", err=True)
+    typer.echo(
+        f"gated-out: {info.get('module_gated_out', 0)}  "
+        f"passed gate: {info.get('candidates_passed_gate', 0)}  "
+        f"above threshold: {info.get('candidates_above_threshold', 0)}",
+        err=True,
+    )
+    typer.echo("Top 5 scored candidates (before threshold):", err=True)
+    for score, nid in info.get("top_candidates", []):
+        typer.echo(f"  {score:+4d}  {nid}", err=True)
+    typer.echo(f"BFS expanded: {info.get('bfs_expanded', 0)} nodes", err=True)
+    after = info.get("after_pruner", [])
+    typer.echo(f"After pruner: {len(after)} node(s)", err=True)
+    for nid in after:
+        typer.echo(f"  {nid}", err=True)
+    typer.echo("──────────────────────────────────────────────────", err=True)
+
+
 def _collect_py_files(root: Path) -> list[Path]:
     """Walk root recursively, skipping ignored directories."""
     files: list[Path] = []

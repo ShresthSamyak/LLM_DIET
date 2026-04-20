@@ -561,12 +561,28 @@ def find_entry_points(
         if s >= _ENTRY_MIN_SCORE:
             scored.append((-s, _type_preference(node["type"]), node["id"]))
 
+    # Gate fallback: if every node was rejected by the module gate, re-score
+    # without it. This handles the case where the indexed repo has no
+    # auth/security path tokens (e.g. a code-analysis tool queried for "login").
+    _gate_fallback = False
+    if not scored and apply_module_gate and _gated_out == len(nodes):
+        _gate_fallback = True
+        _all_raw_fallback: list[tuple[int, str]] = []
+        for node in nodes:
+            s = _score_node(node, kw_weights, fan_in)
+            _all_raw_fallback.append((s, node["id"]))
+            if s >= _ENTRY_MIN_SCORE:
+                scored.append((-s, _type_preference(node["type"]), node["id"]))
+        if _debug is not None:
+            _all_raw = _all_raw_fallback  # show fallback scores in debug
+
     if _debug is not None:
         top5 = sorted(_all_raw, key=lambda t: -t[0])[:5]
         _debug["top_candidates"] = top5
         _debug["apply_module_gate"] = apply_module_gate
+        _debug["gate_fallback"] = _gate_fallback
         _debug["module_gated_out"] = _gated_out
-        _debug["candidates_passed_gate"] = len(_all_raw) - _gated_out
+        _debug["candidates_passed_gate"] = len(_all_raw) - _gated_out if not _gate_fallback else len(nodes)
         _debug["candidates_above_threshold"] = len(scored)
 
     if not scored:
