@@ -14,6 +14,7 @@ from .intent import format_intent_output
 from .js_parser import JS_EXTENSIONS, parse_js_file
 from .parser import parse_file
 from .retrieval import run_query
+from .watcher import watch as _watch
 
 app = typer.Typer(
     name="context-engine",
@@ -223,6 +224,23 @@ def apply(
 
     code = run_apply(query_str, graph, root, dry_run=dry_run, yes=yes)
     raise typer.Exit(code=code)
+
+
+@app.command()
+def watch(
+    directory: Path = typer.Argument(
+        default=Path("."),
+        help="Root directory to watch (default: current directory).",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Watch for file changes and auto-rebuild .cecl/graph.json."""
+    _configure_logging(verbose)
+    _watch(directory)
 
 
 def main() -> None:

@@ -111,56 +111,63 @@
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_configure_logging",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 32,
+      "line": 33,
       "code": "def _configure_logging(verbose: bool) -> None:\n    level = logging.DEBUG if verbose else logging.INFO\n    logging.basicConfig(\n        format=\"%(levelname)s  %(message)s\",\n        level=level,\n        stream=sys.stderr,\n    )"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_print_debug",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 41,
+      "line": 42,
       "code": "def _print_debug(info: dict) -> None:\n    typer.echo(\"\u2500\u2500\u2500 DEBUG \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\", err=True)\n    gate = info.get('apply_module_gate', False)\n    fallback = info.get('gate_fallback', False)\n    gate_str = (\"yes\" if gate else \"no\") + (\" [fallback: gate bypassed \u2014 all nodes rejected]\" if fallback else \"\")\n    typer.echo(f\"Module gate applied: {gate_str}\", err=True)\n    typer.echo(\n        f\"gated-out: {info.get('module_gated_out', 0)}  \"\n        f\"passed gate: {info.get('candidates_passed_gate', 0)}  \"\n        f\"above threshold: {info.get('candidates_above_threshold', 0)}\",\n        err=True,\n    )\n    typer.echo(\"Top 5 scored candidates (before threshold):\", err=True)\n    for score, nid in info.get(\"top_candidates\", []):\n        typer.echo(f\"  {score:+4d}  {nid}\", err=True)\n    typer.echo(f\"BFS expanded: {info.get('bfs_expanded', 0)} nodes\", err=True)\n    after = info.get(\"after_pruner\", [])\n    typer.echo(f\"After pruner: {len(after)} node(s)\", err=True)\n    for nid in after:\n        typer.echo(f\"  {nid}\", err=True)\n    typer.echo(\"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\", err=True)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_collect_py_files",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 64,
+      "line": 65,
       "code": "def _collect_py_files(root: Path) -> list[Path]:\n    \"\"\"Walk root recursively, skipping ignored directories.\"\"\"\n    files: list[Path] = []\n    for path in root.rglob(\"*.py\"):\n        if any(part in IGNORE_DIRS for part in path.parts):\n            continue\n        files.append(path)\n    return sorted(files)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_collect_js_files",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 74,
+      "line": 75,
       "code": "def _collect_js_files(root: Path) -> list[Path]:\n    \"\"\"Walk root recursively for JS/TS files, skipping ignored directories.\"\"\"\n    files: list[Path] = []\n    for ext in JS_EXTENSIONS:\n        for path in root.rglob(f\"*{ext}\"):\n            if any(part in IGNORE_DIRS for part in path.parts):\n                continue\n            files.append(path)\n    return sorted(set(files))"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:index",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 86,
+      "line": 87,
       "code": "def index(\n    directory: Path = typer.Argument(\n        default=Path(\".\"),\n        help=\"Root directory to scan (default: current directory).\",\n        exists=True,\n        file_okay=False,\n        dir_okay=True,\n        resolve_path=True,\n    ),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Scan Python and JS/TS files and build a call graph saved to .cecl/graph.json.\"\"\"\n    _configure_logging(verbose)\n    logger = logging.getLogger(__name__)\n\n    py_files = _collect_py_files(directory)\n    js_files = _collect_js_files(directory)\n    all_files = py_files + js_files\n\n    if not all_files:\n        typer.echo(\"No Python or JS/TS files found.\", err=True)\n        raise typer.Exit(code=1)\n\n    logger.info(\n        \"Scanning %s \u2014 found %d Python, %d JS/TS files\",\n        directory, len(py_files), len(js_files),\n    )\n\n    results = []\n    errors = 0\n    for path in py_files:\n        result = parse_file(path)\n        if result is None:\n            errors += 1\n        else:\n            results.append(result)\n\n    for path in js_files:\n        result = parse_js_file(path)\n        if result is None:\n            errors += 1\n        else:\n            results.append(result)\n\n    logger.info(\"Parsed %d files (%d skipped due to errors).\", len(results), errors)\n\n    graph = build_graph(results)\n\n    out_dir = directory / OUTPUT_DIR\n    out_dir.mkdir(parents=True, exist_ok=True)\n    out_path = out_dir / OUTPUT_FILE\n    out_path.write_text(json.dumps(graph, indent=2), encoding=\"utf-8\")\n\n    node_counts = Counter(n[\"type\"] for n in graph[\"nodes\"])\n    edge_counts = Counter(e[\"type\"] for e in graph[\"edges\"])\n    typer.echo(f\"Graph saved -> {out_path}\")\n    typer.echo(\n        f\"  nodes : {len(graph['nodes'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(node_counts.items()))\n    )\n    typer.echo(\n        f\"  edges : {len(graph['edges'])}  \"\n        + \"  \".join(f\"{t}={c}\" for t, c in sorted(edge_counts.items()))\n    )"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:query",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 153,
+      "line": 154,
       "code": "def query(\n    query_str: str = typer.Argument(..., metavar=\"QUERY\", help=\"Natural-language query, e.g. 'fix login bug'.\"),\n    graph_path: Path = typer.Option(\n        Path(\".cecl/graph.json\"),\n        \"--graph\", \"-g\",\n        help=\"Path to graph.json produced by `index`.\",\n    ),\n    raw: bool = typer.Option(False, \"--raw\", help=\"Print full JSON result instead of formatted output.\"),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n    debug: bool = typer.Option(False, \"--debug\", help=\"Print retrieval diagnostics: top candidates, BFS count, pruner output.\"),\n) -> None:\n    \"\"\"Query the code graph and return minimal relevant context.\"\"\"\n    _configure_logging(verbose)\n\n    if not graph_path.exists():\n        typer.echo(f\"Graph not found at {graph_path}. Run `context-engine index` first.\", err=True)\n        raise typer.Exit(code=1)\n\n    try:\n        graph = json.loads(graph_path.read_text(encoding=\"utf-8\"))\n    except json.JSONDecodeError as exc:\n        typer.echo(f\"Failed to parse {graph_path}: {exc}\", err=True)\n        raise typer.Exit(code=1)\n\n    debug_info: dict | None = {} if debug else None\n    result = run_query(query_str, graph, _debug=debug_info)\n\n    if debug and debug_info is not None:\n        _print_debug(debug_info)\n\n    if raw:\n        typer.echo(json.dumps(result, indent=2))\n        return\n\n    typer.echo(format_intent_output(result, graph))"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:apply",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 191,
+      "line": 192,
       "code": "def apply(\n    query_str: str = typer.Argument(..., metavar=\"QUERY\", help=\"What to add or fix, e.g. 'add login endpoint'.\"),\n    graph_path: Path = typer.Option(\n        Path(\".cecl/graph.json\"),\n        \"--graph\", \"-g\",\n        help=\"Path to graph.json produced by `index`.\",\n    ),\n    root: Path = typer.Option(\n        Path(\".\"),\n        \"--root\", \"-r\",\n        help=\"Project root directory.\",\n        exists=True,\n        file_okay=False,\n        dir_okay=True,\n        resolve_path=True,\n    ),\n    dry_run: bool = typer.Option(False, \"--dry-run\", help=\"Show diffs without writing files.\"),\n    yes: bool = typer.Option(False, \"--yes\", \"-y\", help=\"Skip confirmation prompt.\"),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Query, plan, generate diffs, validate, and apply code changes.\"\"\"\n    _configure_logging(verbose)\n\n    if not graph_path.exists():\n        typer.echo(f\"Graph not found at {graph_path}. Run `context-engine index` first.\", err=True)\n        raise typer.Exit(code=1)\n\n    try:\n        graph = json.loads(graph_path.read_text(encoding=\"utf-8\"))\n    except json.JSONDecodeError as exc:\n        typer.echo(f\"Failed to parse {graph_path}: {exc}\", err=True)\n        raise typer.Exit(code=1)\n\n    code = run_apply(query_str, graph, root, dry_run=dry_run, yes=yes)\n    raise typer.Exit(code=code)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:watch",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
+      "line": 230,
+      "code": "def watch(\n    directory: Path = typer.Argument(\n        default=Path(\".\"),\n        help=\"Root directory to watch (default: current directory).\",\n        exists=True,\n        file_okay=False,\n        dir_okay=True,\n        resolve_path=True,\n    ),\n    verbose: bool = typer.Option(False, \"--verbose\", \"-v\", help=\"Enable debug logging.\"),\n) -> None:\n    \"\"\"Watch for file changes and auto-rebuild .cecl/graph.json.\"\"\"\n    _configure_logging(verbose)\n    _watch(directory)"
     },
     {
       "id": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:main",
       "type": "function",
       "file": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
-      "line": 228,
+      "line": 246,
       "code": "def main() -> None:\n    if hasattr(sys.stdout, \"reconfigure\"):\n        sys.stdout.reconfigure(encoding=\"utf-8\", errors=\"replace\")\n    if hasattr(sys.stderr, \"reconfigure\"):\n        sys.stderr.reconfigure(encoding=\"utf-8\", errors=\"replace\")\n    app()"
     },
     {
@@ -1352,6 +1359,93 @@
       "line": 10
     },
     {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "type": "file"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_collect_source_files",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 34,
+      "code": "def _collect_source_files(root: Path) -> list[Path]:\n    files: list[Path] = []\n    for path in root.rglob(\"*\"):\n        if path.suffix not in _WATCHED_EXTENSIONS:\n            continue\n        if any(part in _IGNORE_DIRS for part in path.parts):\n            continue\n        files.append(path)\n    return sorted(files)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 45,
+      "code": "def rebuild_graph(root: Path) -> tuple[int, int, float]:\n    \"\"\"Parse all source files under *root* and write graph.json.\n\n    Returns (node_count, edge_count, elapsed_ms).\n    \"\"\"\n    t0 = time.monotonic()\n    files = _collect_source_files(root)\n\n    results = []\n    for path in files:\n        if path.suffix == \".py\":\n            r = parse_file(path)\n        else:\n            r = parse_js_file(path)\n        if r is not None:\n            results.append(r)\n\n    graph = build_graph(results)\n\n    import json\n    out_dir = root / _OUTPUT_DIR\n    out_dir.mkdir(parents=True, exist_ok=True)\n    (out_dir / _OUTPUT_FILE).write_text(\n        json.dumps(graph, indent=2), encoding=\"utf-8\"\n    )\n\n    elapsed_ms = (time.monotonic() - t0) * 1000\n    return len(graph[\"nodes\"]), len(graph[\"edges\"]), elapsed_ms"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:watch",
+      "type": "function",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 131,
+      "code": "def watch(root: Path) -> None:\n    \"\"\"Block forever, rebuilding the graph whenever source files change.\"\"\"\n    root = root.resolve()\n    print(f\"Watching {root}\", flush=True)\n    print(f\"Extensions : {', '.join(sorted(_WATCHED_EXTENSIONS))}\", flush=True)\n    print(f\"Debounce   : {_DEBOUNCE_SECONDS}s\", flush=True)\n    print(\"Press Ctrl-C to stop.\\n\", flush=True)\n\n    # Initial build so the graph is fresh when the watcher starts.\n    try:\n        nodes, edges, ms = rebuild_graph(root)\n        print(f\"Initial build: {nodes} nodes, {edges} edges ({ms:.0f}ms)\", flush=True)\n    except Exception as exc:\n        print(f\"Initial build failed: {exc}\", flush=True)\n\n    handler = _SourceChangeHandler(root)\n    observer = Observer()\n    observer.schedule(handler, str(root), recursive=True)\n    observer.start()\n\n    try:\n        while observer.is_alive():\n            observer.join(timeout=1)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        observer.stop()\n        observer.join()\n        print(\"\\nWatcher stopped.\", flush=True)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "type": "class",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 79
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.__init__",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 80,
+      "code": "def __init__(self, root: Path) -> None:\n        super().__init__()\n        self._root = root\n        self._timer: threading.Timer | None = None\n        self._lock = threading.Lock()"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 86,
+      "code": "def _is_relevant(self, path_str: str) -> bool:\n        p = Path(path_str)\n        if p.suffix not in _WATCHED_EXTENSIONS:\n            return False\n        return not any(part in _IGNORE_DIRS for part in p.parts)"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 92,
+      "code": "def _schedule_rebuild(self) -> None:\n        with self._lock:\n            if self._timer is not None:\n                self._timer.cancel()\n            self._timer = threading.Timer(_DEBOUNCE_SECONDS, self._do_rebuild)\n            self._timer.daemon = True\n            self._timer.start()"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._do_rebuild",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 100,
+      "code": "def _do_rebuild(self) -> None:\n        try:\n            nodes, edges, ms = rebuild_graph(self._root)\n            print(f\"Graph updated: {nodes} nodes, {edges} edges ({ms:.0f}ms)\", flush=True)\n        except Exception as exc:\n            print(f\"Graph rebuild failed: {exc}\", flush=True)\n            logger.exception(\"Rebuild error\")"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_created",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 108,
+      "code": "def on_created(self, event: FileSystemEvent) -> None:\n        if not event.is_directory and self._is_relevant(event.src_path):\n            self._schedule_rebuild()"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_modified",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 112,
+      "code": "def on_modified(self, event: FileSystemEvent) -> None:\n        if not event.is_directory and self._is_relevant(event.src_path):\n            self._schedule_rebuild()"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_deleted",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 116,
+      "code": "def on_deleted(self, event: FileSystemEvent) -> None:\n        if not event.is_directory and self._is_relevant(event.src_path):\n            self._schedule_rebuild()"
+    },
+    {
+      "id": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_moved",
+      "type": "method",
+      "file": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "line": 120,
+      "code": "def on_moved(self, event: FileSystemEvent) -> None:\n        src_ok = self._is_relevant(event.src_path)\n        dst_ok = self._is_relevant(event.dest_path)  # type: ignore[attr-defined]\n        if not event.is_directory and (src_ok or dst_ok):\n            self._schedule_rebuild()"
+    },
+    {
       "id": "C:/Users/HP/Documents/llmemory tree/hooks/post_tool_use.py",
       "type": "file"
     },
@@ -1608,6 +1702,11 @@
     },
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:watch",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:main",
       "type": "contains"
     },
@@ -1669,6 +1768,11 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:apply",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/apply.py:run_apply",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:watch",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/cli.py:_configure_logging",
       "type": "calls"
     },
     {
@@ -3409,6 +3513,146 @@
     {
       "from": "C:/Users/HP/Documents/llmemory tree/context_engine/validator.py:validate_patch",
       "to": "C:/Users/HP/Documents/llmemory tree/context_engine/validator.py:validate_syntax",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_collect_source_files",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:watch",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "type": "contains"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.__init__",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._do_rebuild",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_created",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_modified",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_deleted",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_moved",
+      "type": "has_method"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_collect_source_files",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/graph_builder.py:build_graph",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/parser.py:parse_file",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/js_parser.py:parse_js_file",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:watch",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:watch",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.__init__",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.__init__",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._do_rebuild",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:rebuild_graph",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_created",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_created",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_modified",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_modified",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_deleted",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_deleted",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_moved",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._is_relevant",
+      "type": "calls"
+    },
+    {
+      "from": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler.on_moved",
+      "to": "C:/Users/HP/Documents/llmemory tree/context_engine/watcher.py:_SourceChangeHandler._schedule_rebuild",
       "type": "calls"
     },
     {
