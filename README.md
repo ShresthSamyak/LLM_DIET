@@ -52,17 +52,10 @@ No embeddings. No vector DB. No LLM calls in the retrieval path.
 
 ```bash
 pip install llm-diet
-context-engine index .
+context-engine install
 ```
 
-## Use with Claude Code (automatic)
-
-```bash
-claude mcp add context-engine -- python -m context_engine.mcp_server
-```
-
-After this, every prompt you send to Claude Code is automatically prefixed with
-the minimal relevant context from your codebase.
+That's it. The install command indexes your repo and configures Claude Code, Cursor, or Windsurf automatically.
 
 ## Use as CLI
 
