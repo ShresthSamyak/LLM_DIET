@@ -672,8 +672,13 @@ def traverse_graph(
 
 def _file_of(node_id: str) -> str:
     """Return the file portion of a node ID (everything before the last ``:``)."""
-    file_part, sep, _ = node_id.rpartition(":")
-    return file_part if sep else node_id
+    file_part, sep, sym = node_id.rpartition(":")
+    # On Windows, drive-letter colons (C:/...) look like a colon separator but
+    # the "symbol" part contains path separators — that means the colon was NOT
+    # a file:symbol delimiter, so return the whole ID as-is.
+    if sep and "/" not in sym and "\\" not in sym:
+        return file_part
+    return node_id
 
 
 def _module_scores(

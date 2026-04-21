@@ -319,4 +319,19 @@ def prune(
             break
         kept.append(n)
 
+    # ------------------------------------------------------------------
+    # Step 4: if the only kept node is a bare file node (no code), expand
+    # it by pulling in all function/method children from ranked.
+    # This prevents "database connection" from returning just a filename stub.
+    # ------------------------------------------------------------------
+    if len(kept) == 1 and kept[0].get("type") == "file":
+        file_id = kept[0]["id"]
+        children = [
+            n for n in ranked
+            if n.get("type") in ("function", "method")
+            and n.get("file") == file_id
+        ]
+        if children:
+            kept = children[:max_kept]
+
     return PruneResult(kept=kept, inline_hints=inline, categories=categories)

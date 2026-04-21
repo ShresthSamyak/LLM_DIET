@@ -116,7 +116,7 @@ _PLATFORMS: list[Platform] = [
     Platform("Windsurf",    ".windsurf", ".windsurf/rules/context-engine.md",  "rules"),
 ]
 
-_HOOK_COMMAND = "python context_engine/hooks/user_prompt_submit.py"
+_HOOK_COMMAND = "python -m context_engine.hooks.user_prompt_submit"
 
 _RULES_CONTENT = """\
 # context-engine

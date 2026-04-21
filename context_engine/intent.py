@@ -930,8 +930,11 @@ def _bare(node_id: str) -> str:
 def _token_line(result: Mapping[str, Any]) -> str:
     rt = result.get("token_estimate_raw", 0)
     ct = result.get("token_estimate", 0)
-    saved = 100 * (rt - ct) // rt if rt > 0 else 0
-    return f"tokens        : ~{ct} (raw ~{rt}, -{saved}%)"
+    if rt > 0 and ct <= rt:
+        suffix = f"-{100 * (rt - ct) // rt}%"
+    else:
+        suffix = "no compression"
+    return f"tokens        : ~{ct} (raw ~{rt}, {suffix})"
 
 
 def _format_debug(
