@@ -78,3 +78,14 @@ No LLM calls, no vector DB, no setup.
 context-engine uses AST parsing + call graph traversal. It's deterministic —
 same query, same graph, same result every time. Works offline. Runs in ~176ms.
 Embeddings need a model call just to retrieve context. We don't.
+
+| Feature | context-engine | code-review-graph |
+|---------|---------------|-------------------|
+| Languages | Python, JS, TS, JSX, TSX | 23 languages |
+| Dependencies | tree-sitter only | tree-sitter + SQLite + more |
+| Context injection | UserPromptSubmit hook | MCP server |
+| Autonomous apply | ✅ plan → diff → validate → patch | ❌ |
+| Setup | pip install + index | pip install + build |
+| Incremental updates | manual re-index | auto on file save |
+
+We do less. What we do, we do surgically.
