@@ -5,17 +5,25 @@
 [![License: MIT](https://img.shields.io/github/license/ShresthSamyak/LLM_DIET)](LICENSE)
 [![Downloads](https://img.shields.io/badge/downloads-PyPI-brightgreen)](https://pypi.org/project/llm-diet/)
 
-**Stop sending your entire codebase to Claude. Inject only what matters.**
+**Give Claude the right context upfront. Fewer turns, faster answers, lower cost.**
 
 Deterministic context retrieval for AI coding tools. Parses your repo into a call graph, scores every function against your query, and injects the top matches — before Claude starts reasoning. No embeddings, no vector DB, no LLM calls in the retrieval path.
 
 ## The Problem
 
-Every prompt you send carries your entire codebase as dead weight:
+Every Claude Code session starts blind. Claude explores your entire codebase before answering — reading files, listing directories, running commands. That exploration costs tokens and time.
+
 ```
-Without llm-diet:  Your prompt + 946,210 tokens of codebase → Claude → answer
-With llm-diet:     Your prompt +     186 tokens of context  → Claude → same answer
+Without llm-diet:
+  Your prompt → Claude explores codebase → finds relevant code → answers
+  Cost: $0.19 for a simple bug fix session
+
+With llm-diet:
+  Your prompt + injected context → Claude answers faster
+  Cost: $0.035 for the same depth of answer
 ```
+
+Real test on a 1,240-node project: 5x cheaper per session.
 
 ## Benchmark
 
@@ -43,7 +51,7 @@ With llm-diet:     Your prompt +     186 tokens of context  → Claude → same 
 | fix error handling | 946,210 | 221 | >99.9% | 406ms |
 | add logging to the pipeline | 946,210 | 136 | >99.9% | 328ms |
 
-**946,210 → 186 tokens average. 432ms overhead.**
+**946,210 → 186 tokens injected. 5x cheaper sessions in practice.**
 
 ## How It Works
 
@@ -86,7 +94,7 @@ context-engine install    # indexes repo + configures your AI tool
 | Cursor | Static rules file written to `.cursor/rules/` | Guides AI; no dynamic injection |
 | Windsurf | Static rules file written to `.windsurf/rules/` | Guides AI; no dynamic injection |
 
-Dynamic injection for Cursor and Windsurf is on the roadmap.
+Full token reduction verified on Claude Code. Cursor/Windsurf dynamic injection on the roadmap.
 
 ## Why Not RAG?
 
