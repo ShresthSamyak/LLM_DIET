@@ -86,6 +86,23 @@ The shadow server fixes this at the transport layer. When `context-engine instal
 
 Files not in the graph pass through unchanged. Binary files are skipped. Large unindexed files (>50k chars) are truncated to 200 lines with a note to run `context-engine index`.
 
+## diet-run (new in 0.1.8)
+
+`diet-run` is a CLI wrapper that launches Claude Code in fully enforced Low Bandwidth Mode:
+
+```bash
+diet-run                    # run in current directory
+diet-run /path/to/project   # run in specific directory
+```
+
+What it does:
+- Sets `LLM_DIET_STRICT=1` — unindexed files return an error instead of raw content
+- Passes `--mcp-config .mcp.json` — shadow server is the only file reader
+- Passes `--disallowed-tools Read` — Claude's built-in Read tool is blocked
+- Requires `.cecl/graph.json` and `.mcp.json` to exist before launching
+
+Run `context-engine install` first to set up the shadow server, then use `diet-run` instead of `claude` to open sessions.
+
 ## Quick Start
 
 ```bash
