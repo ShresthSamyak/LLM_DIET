@@ -60,8 +60,7 @@ def main() -> None:
     cmd = [
         claude_exe,
         "--mcp-config", str(mcp_config),
-        "--strict-mcp-config",
-        "--disallowed-tools", "Read",
+        "--disallowed-tools", "Read,Bash,Glob,Grep",
     ]
 
     print(f"[diet-run] launching: {' '.join(cmd)}")
