@@ -176,6 +176,30 @@ def _write_claude(dest: Path) -> None:
     dest.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
 
+def _write_shadow_mcp(root: Path) -> None:
+    """Register the shadow MCP server in .mcp.json if the graph exists."""
+    if not (root / _OUTPUT_DIR / _OUTPUT_FILE).exists():
+        return
+
+    mcp_path = root / ".mcp.json"
+    existing: dict = {}
+    if mcp_path.exists():
+        try:
+            existing = json.loads(mcp_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    servers: dict = existing.setdefault("mcpServers", {})
+    if "llm-diet-shadow" not in servers:
+        servers["llm-diet-shadow"] = {
+            "command": "python",
+            "args": ["-m", "context_engine.shadow_server"],
+            "cwd": str(root),
+        }
+
+    mcp_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+
 def _write_rules(dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(_RULES_CONTENT, encoding="utf-8")
@@ -201,6 +225,7 @@ def _configure_platforms(root: Path) -> list[str]:
         try:
             if p.write_fn == "claude":
                 _write_claude(dest)
+                _write_shadow_mcp(root)
             else:
                 _write_rules(dest)
             configured.append(p.name)
