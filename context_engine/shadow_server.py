@@ -217,7 +217,7 @@ def main() -> None:
 # Edge-case tests
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def _run_tests() -> None:
     import tempfile, sys
 
     _GRAPH_PATH = Path(".cecl/graph.json")
@@ -352,3 +352,11 @@ if __name__ == "__main__":
     passed = sum(1 for _, ok, _ in results if ok)
     print(f"Results: {passed}/{len(results)} passed")
     sys.exit(0 if passed == len(results) else 1)
+
+
+if __name__ == "__main__":
+    import sys
+    if "--test" in sys.argv:
+        _run_tests()
+    else:
+        main()
