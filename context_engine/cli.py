@@ -296,8 +296,13 @@ def install(
 
 
 @app.command()
-def shadow() -> None:
+def shadow(
+    strict: bool = typer.Option(False, "--strict", help="Refuse to pass through unindexed files."),
+) -> None:
     """Run the shadow MCP server (intercepts read_file with call-graph context)."""
+    import os as _os
+    if strict:
+        _os.environ["LLM_DIET_STRICT"] = "1"
     from .shadow_server import main as _shadow_main
     _shadow_main()
 

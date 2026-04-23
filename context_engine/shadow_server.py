@@ -28,6 +28,8 @@ _BINARY_EXTENSIONS = frozenset({
     ".zip", ".whl", ".exe", ".pyc", ".pkl", ".db", ".sqlite",
 })
 
+_STRICT_MODE: bool = os.environ.get("LLM_DIET_STRICT", "").lower() in ("1", "true")
+
 
 # ---------------------------------------------------------------------------
 # Graph loading
@@ -181,6 +183,10 @@ def read_file(file_path: str) -> str:
 
     # MISS path — file not in graph
 
+    # strict mode: refuse to pass through unindexed files
+    if _STRICT_MODE:
+        return f"# [llm-diet] strict mode: {file_path} is not indexed. Run context-engine index to add it."
+
     # 5. Very large unindexed file — truncate to first 200 lines
     if len(raw) > _LARGE_FILE_CHARS:
         head = "\n".join(raw.splitlines()[:_LARGE_FILE_HEAD_LINES])
@@ -307,6 +313,40 @@ if __name__ == "__main__":
             len(actual_lines) == 201 and "truncated" in actual_lines[-1],
             f"{len(actual_lines)} lines, last: {repr(actual_lines[-1][:60])}",
         )
+
+        # 6. STRICT + HIT: should return compressed output, not the strict error
+        # Use _mod.read_file so patches to _mod.* take effect in its globals.
+        hit_file = tmp / "hit.py"
+        hit_file.write_text(
+            "def compute(x, y):\n" + "    z = x + y\n" * 20 + "    return z\n",
+            encoding="utf-8",
+        )
+        _mod._STRICT_MODE = True
+        _mod._resolve = lambda fp, g: [{"type": "function", "file": str(hit_file), "line": 1,
+                                         "code": hit_file.read_text()}]
+        _mod._load_graph = lambda: {"nodes": [], "edges": []}
+        result = _mod.read_file(str(hit_file))
+        check(
+            "STRICT + HIT returns compressed output",
+            result.startswith("# [compressed by llm-diet]"),
+            repr(result[:60]),
+        )
+
+        # 7. STRICT + MISS: should return strict error, not raw content
+        miss_file = tmp / "miss.py"
+        miss_file.write_text("x = 42\n", encoding="utf-8")
+        _mod._resolve = lambda fp, g: []
+        result = _mod.read_file(str(miss_file))
+        expected = f"# [llm-diet] strict mode: {miss_file} is not indexed. Run context-engine index to add it."
+        check(
+            "STRICT + MISS returns strict error",
+            result == expected,
+            repr(result[:80]),
+        )
+
+        _mod._STRICT_MODE = False
+        _mod._resolve = _orig_resolve
+        _mod._load_graph = _orig_load
 
     print()
     passed = sum(1 for _, ok, _ in results if ok)
