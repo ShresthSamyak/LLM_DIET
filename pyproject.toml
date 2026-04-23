@@ -21,6 +21,7 @@ dependencies = [
 context-engine = "context_engine.cli:main"
 context-engine-mcp = "context_engine.mcp_server:mcp.run"
 diet-mcp = "llm_diet.mcp_server:main"
+diet-run = "llm_diet.diet_run:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

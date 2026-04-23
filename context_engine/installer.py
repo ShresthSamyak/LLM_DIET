@@ -122,23 +122,21 @@ _CLAUDE_MD_SENTINEL = "<!-- context-engine -->"
 
 _CLAUDE_MD_CONTENT = f"""\
 {_CLAUDE_MD_SENTINEL}
-# context-engine is active in this project
+## context-engine is active
 
-Every prompt you send is automatically prefixed with the most relevant
-functions from this codebase via the UserPromptSubmit hook.
+This project uses [llm-diet](https://github.com/ShresthSamyak/LLM_DIET) for context-aware file access.
 
-## IMPORTANT — read this before every response:
+### Low Bandwidth Mode
 
-The additionalContext you receive contains the exact functions most
-relevant to the user's query, selected by AST call graph analysis.
+The `llm-diet-shadow` MCP server is registered in `.mcp.json`. All `read_file` calls are intercepted and return compressed call-graph representations for indexed files.
 
-Rules:
-1. If additionalContext contains relevant functions — USE THEM DIRECTLY.
-   Do not read those files again. Do not explore the codebase first.
-2. Only read additional files if additionalContext is clearly insufficient.
-3. Say "Using injected context" at the start if you used it.
+**Rules:**
+1. When context is injected before your prompt, use it directly — do not re-read those files.
+2. When you call `read_file` and the response starts with `# [compressed by llm-diet]`, treat it as the complete file — do not call `read_file` again on the same path.
+3. When you call `read_file` and the response starts with `# [llm-diet] strict mode:`, the file is not indexed — ask the user to run `context-engine index` rather than trying to read the raw file another way.
+4. Prefer `list_directory` over shell `ls` or `find` — the shadow server's `list_directory` returns filenames only.
 
-This reduces token usage and gives faster, more accurate answers.
+Say "Low Bandwidth Mode active" at the start of your first response in each session.
 """
 
 _RULES_CONTENT = """\
