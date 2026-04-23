@@ -7,6 +7,8 @@ bypass the shadow server by reading files directly.
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,20 +46,31 @@ def main() -> None:
     env = os.environ.copy()
     env["LLM_DIET_STRICT"] = "1"
 
+    # Resolve claude executable via PATH (bare "claude" fails on Windows)
+    claude_exe = shutil.which("claude")
+    if claude_exe is None:
+        print("Error: claude not found on PATH. Install Claude Code first.")
+        sys.exit(1)
+
     # Build claude command:
     #   --mcp-config .mcp.json     load the shadow MCP server
     #   --strict-mcp-config        ignore all other MCP servers (shadow only)
     #   --disallowed-tools Read    block built-in Read so all file reads go
     #                              through the shadow server's read_file tool
     cmd = [
-        "claude",
+        claude_exe,
         "--mcp-config", str(mcp_config),
         "--strict-mcp-config",
         "--disallowed-tools", "Read",
     ]
 
-    # execvpe replaces the current process — no zombie, no wrapper overhead
-    os.execvpe(cmd[0], cmd, env)
+    print(f"[diet-run] launching: {' '.join(cmd)}")
+
+    if sys.platform == "win32":
+        result = subprocess.run(cmd, env=env, shell=False)
+        sys.exit(result.returncode)
+    else:
+        os.execvpe(cmd[0], cmd, env)
 
 
 if __name__ == "__main__":
